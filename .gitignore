@@ -26,9 +26,6 @@ __pycache__/
 .Trashes
 ehthumbs.db
 
-# Archivos de datos locales (descargados desde Google Drive)
-*.csv
-
 # Archivos locales de configuración
 .env
 .streamlit/secrets.toml
