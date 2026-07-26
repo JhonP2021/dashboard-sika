@@ -1,0 +1,48 @@
+# Entorno virtual
+.venv/
+venv/
+env/
+ENV/
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Datos locales (archivos CSV grandes)
+*.csv
+_Table*.csv
+_TableDate*.csv
+_TableReport*.csv
+
+# Archivos locales de configuración
+.env
+.env.local
+config/.env
+
+# Cache de Streamlit
+.streamlit/secrets.toml
+.streamlit/cache/
+
+# Otros
+*.log
+*.tmp
+~$*
+Thumbs.db
