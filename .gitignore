@@ -28,6 +28,7 @@ ehthumbs.db
 
 # Archivos locales de configuración
 .env
+.streamlit/secrets.toml
 .env.local
 config/.env
 
