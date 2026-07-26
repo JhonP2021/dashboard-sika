@@ -17,7 +17,3 @@ enableXsrfProtection = true
 
 [logger]
 level = "info"
-
-[ui]
-hideTopBar = false
-hideSidebarNav = false
