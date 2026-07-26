@@ -26,12 +26,6 @@ __pycache__/
 .Trashes
 ehthumbs.db
 
-# Datos locales (archivos CSV grandes)
-*.csv
-_Table*.csv
-_TableDate*.csv
-_TableReport*.csv
-
 # Archivos locales de configuración
 .env
 .env.local
