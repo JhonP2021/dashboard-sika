@@ -12,16 +12,19 @@ class SidebarFilters:
     date_range: tuple[date, date] | None
     formula_keys: list[str]
     operators: list[str]
+    lots: list[str]
+    batch_range: tuple[int, int] | None
 
 
-def render_sidebar(*, formula_options: dict[str, str], available_operators: list[str], min_date, max_date) -> SidebarFilters:
-    st.sidebar.header("Filtros globales")
+def render_sidebar(*, formula_options: dict[str, str], available_operators: list[str], available_lots: list[str], min_date, max_date, batch_bounds: tuple[int, int] | None) -> SidebarFilters:
+    st.sidebar.header("Filtros")
 
     date_range = None
     if min_date is not None and max_date is not None:
+        default_start = max(min_date, date(2026, 5, 1))
         selected_dates = st.sidebar.date_input(
             "Rango de fechas",
-            value=(min_date, max_date),
+            value=(default_start, max_date),
             min_value=min_date,
             max_value=max_date,
         )
@@ -29,19 +32,29 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
             date_range = selected_dates
 
     selected_formula_labels = st.sidebar.multiselect(
-        "Formulas",
+        "Producto / fórmula",
         options=list(formula_options.keys()),
         default=list(formula_options.keys()),
-        help="Filtra por fórmula/receta sin romper la relación entre tablas.",
     )
     formula_keys = [formula_options[label] for label in selected_formula_labels]
 
     operators = st.sidebar.multiselect(
-        "Operadores",
+        "Operario",
         options=available_operators,
         default=available_operators[:],
     )
 
-    st.sidebar.caption("La app usa CSV en DEV y Microsoft Access en PROD.")
+    lots: list[str] = []
+    if available_lots:
+        lots = st.sidebar.multiselect("Lote", options=available_lots, default=available_lots)
 
-    return SidebarFilters(date_range=date_range, formula_keys=formula_keys, operators=operators)
+    batch_range = None
+    if batch_bounds is not None:
+        batch_range = st.sidebar.slider(
+            "Rango de batches", min_value=batch_bounds[0], max_value=batch_bounds[1],
+            value=batch_bounds, step=1, help="Número de batch reportado por el mezclador.",
+        )
+
+    st.sidebar.caption("Datos desde 2026 · actualización automática cada 3 horas.")
+
+    return SidebarFilters(date_range, formula_keys, operators, lots, batch_range)
