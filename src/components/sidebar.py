@@ -13,10 +13,11 @@ class SidebarFilters:
     formula_keys: list[str]
     operators: list[str]
     lots: list[str]
+    materials: list[str]
     batch_range: tuple[int, int] | None
 
 
-def render_sidebar(*, formula_options: dict[str, str], available_operators: list[str], available_lots: list[str], min_date, max_date, batch_bounds: tuple[int, int] | None) -> SidebarFilters:
+def render_sidebar(*, formula_options: dict[str, str], available_operators: list[str], available_lots: list[str], min_date, max_date, batch_bounds: tuple[int, int] | None, available_materials: list[str] | None = None) -> SidebarFilters:
     st.sidebar.header("Filtros")
 
     date_range = None
@@ -48,6 +49,14 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
     if available_lots:
         lots = st.sidebar.multiselect("Lote", options=available_lots, default=available_lots)
 
+    materials: list[str] = []
+    if available_materials:
+        # Por defecto ninguno: el filtro por material acota, no restringe de salida.
+        materials = st.sidebar.multiselect(
+            "Material", options=available_materials, default=[],
+            help="Deja vacío para ver todos los batches.",
+        )
+
     batch_range = None
     if batch_bounds is not None:
         batch_range = st.sidebar.slider(
@@ -57,4 +66,4 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
 
     st.sidebar.caption("Datos desde 2026 · actualización automática cada 3 horas.")
 
-    return SidebarFilters(date_range, formula_keys, operators, lots, batch_range)
+    return SidebarFilters(date_range, formula_keys, operators, lots, materials, batch_range)

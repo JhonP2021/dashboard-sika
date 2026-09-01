@@ -6,6 +6,8 @@ from typing import Iterable
 
 import pandas as pd
 
+from src.models.material_normalizer import canonical_material
+
 
 def _display_formula(value: object) -> str:
     if value is None or pd.isna(value):
@@ -61,7 +63,7 @@ def _add_run_batch_counter(result: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def clean_m1(df: pd.DataFrame) -> pd.DataFrame:
+def clean_m1(df: pd.DataFrame, materials: dict[str, str] | None = None) -> pd.DataFrame:
     result = _coerce_numeric_columns(_parse_datetime_columns(df), exclude={"oiltarget"})
     formula_source = "RecipeBB1name" if "RecipeBB1name" in result else "Recipe1Name"
     result["RecipeBB1name"] = result.get(formula_source, pd.Series("", index=result.index)).map(_display_formula)
@@ -79,6 +81,15 @@ def clean_m1(df: pd.DataFrame) -> pd.DataFrame:
         kg_source, pct_source = f"Differentiel_Silo_{silo}", f"Differentiel_Silo_{silo}_PC"
         result[f"Silo {silo}_kg"] = pd.to_numeric(result.get(kg_source), errors="coerce")
         result[f"Silo {silo}_pct"] = pd.to_numeric(result.get(pct_source), errors="coerce")
+    if materials is not None:
+        # El operador teclea el material a mano en cada silo: sin canonizar,
+        # 'ARENA  16/50' y 'ARENA 16/50' cuentan como polvos distintos.
+        for silo in range(1, 9):
+            source = result.get(f"Silo{silo}Des")
+            result[f"Silo {silo}_material"] = (
+                source.map(lambda v: canonical_material(v, materials))
+                if source is not None else ""
+            )
     if "NumberBatchDone1" in result:
         result["NumberBatchDone1"] = pd.to_numeric(result["NumberBatchDone1"], errors="coerce").round().astype("Int64")
     return _add_run_batch_counter(result)

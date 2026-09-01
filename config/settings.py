@@ -22,6 +22,7 @@ class AppSettings:
     mode: str
     data_dir: Path
     csv_paths: dict[str, Path]
+    materials_map_path: Path
     access_db_path: Path | None
     access_connection_string: str | None
     access_tables: dict[str, str]
@@ -59,6 +60,7 @@ def get_settings() -> AppSettings:
         mode=mode,
         data_dir=DATA_DIR,
         csv_paths=csv_paths,
+        materials_map_path=BASE_DIR / "config" / "materials_map.csv",
         access_db_path=access_path,
         access_connection_string=_build_access_connection_string(str(access_path) if access_path else None),
         access_tables=access_tables,

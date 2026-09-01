@@ -7,12 +7,14 @@ import pandas as pd
 import streamlit as st
 
 from config.settings import get_settings
-from src.components.charts import plot_silo_differences
+from src.components.charts import plot_material_deviation, plot_silo_differences
 from src.components.kpi_cards import render_silo_kpis
 from src.components.sidebar import render_sidebar
 from src.data.access_loader import AccessTableLoader
 from src.data.csv_loader import CSVTableLoader
-from src.models.data_merger import apply_dashboard_filters, prepare_dashboard_data
+from src.models.data_merger import (
+    apply_dashboard_filters, material_long, prepare_dashboard_data, status_canonicals,
+)
 
 
 st.set_page_config(page_title="Control de Pesajes · Sika", layout="wide")
@@ -71,13 +73,20 @@ def main() -> None:
     lots = sorted(data["LOTE"].dropna().astype(str).unique()) if "LOTE" in data else []
     batch_series = pd.to_numeric(data.get("NumberBatchDone1"), errors="coerce").dropna()
     batch_bounds = (int(batch_series.min()), int(batch_series.max())) if not batch_series.empty else None
+    hidden = status_canonicals()
+    material_columns = [f"Silo {silo}_material" for silo in range(1, 9) if f"Silo {silo}_material" in data]
+    available_materials = sorted(
+        {m for column in material_columns for m in data[column].dropna().unique() if m and m not in hidden}
+    )
     filters = render_sidebar(
         formula_options=formula_mapping, available_operators=operators, available_lots=lots,
         min_date=data["report_day"].min(), max_date=data["report_day"].max(), batch_bounds=batch_bounds,
+        available_materials=available_materials,
     )
     filtered = apply_dashboard_filters(
         dataset, date_range=filters.date_range, formula_keys=filters.formula_keys,
         operators=filters.operators, lots=filters.lots, batch_range=filters.batch_range,
+        materials=filters.materials,
     ).m1
 
     st.sidebar.metric("Batches fabricados", f"{len(filtered):,}")
@@ -92,6 +101,9 @@ def main() -> None:
     with right:
         st.plotly_chart(plot_silo_differences(filtered), use_container_width=True)
         st.plotly_chart(plot_silo_differences(filtered, percentage=True), use_container_width=True)
+        st.plotly_chart(
+            plot_material_deviation(material_long(filtered, exclude=hidden)), use_container_width=True
+        )
 
 
 if __name__ == "__main__":

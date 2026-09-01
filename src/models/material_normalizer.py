@@ -227,3 +227,41 @@ def cluster_variants(
                 )
             )
     return sorted(clusters, key=lambda c: -c.usage)
+
+
+def load_canonical_map(path) -> dict[str, str]:
+    """Lee `materials_map.csv` y devuelve variante normalizada -> canónico.
+
+    `keep_default_na=False` es obligatorio: sin él pandas convierte en NaN las
+    descripciones que se parecen a un nulo, y la clave del diccionario se
+    corrompe. El CSV es editable a mano, así que la columna `canonico` manda
+    sobre lo que decidió el clustering.
+    """
+    import pandas as pd
+
+    frame = pd.read_csv(path, keep_default_na=False, dtype=str)
+    return dict(zip(frame["variante"], frame["canonico"]))
+
+
+def canonical_material(value: object, mapping: dict[str, str]) -> str:
+    """Descripción cruda de silo -> nombre canónico del material.
+
+    Si la variante no está en el mapa se devuelve la forma normalizada, que ya
+    es mejor que el texto crudo y deja ver qué falta por mapear.
+    """
+    normalized = normalize_description(value)
+    if not normalized:
+        return ""
+    return mapping.get(normalized, normalized)
+
+
+def load_status_canonicals(path) -> set[str]:
+    """Canónicos de la familia ESTADO ('VACIO', 'MANTENIMIENTO', ...).
+
+    No son polvos, así que su desviación no significa nada y hay que sacarlos
+    del análisis por material.
+    """
+    import pandas as pd
+
+    frame = pd.read_csv(path, keep_default_na=False, dtype=str)
+    return set(frame.loc[frame["familia"] == "ESTADO", "canonico"])

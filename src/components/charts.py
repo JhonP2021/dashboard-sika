@@ -44,3 +44,28 @@ def plot_silo_differences(df: pd.DataFrame, *, percentage: bool = False) -> go.F
     )
     fig.update_yaxes(range=[-40, 20] if percentage else [-20, 40])
     return _style_figure(fig)
+
+
+def plot_material_deviation(long: pd.DataFrame, *, top: int = 12) -> go.Figure:
+    """Dispersión de la desviación por material, no por posición de silo.
+
+    Un silo con desviación alta puede serlo por el equipo o por el polvo que
+    dosifica; agrupando por material se distingue una cosa de la otra.
+    """
+    if long.empty or "material" not in long:
+        return _empty_figure("No hay materiales mapeados para estos filtros.")
+
+    ranking = long.groupby("material")["pct"].agg(["count", "std"]).dropna(subset=["std"])
+    ranking = ranking[ranking["count"] >= 30].sort_values("std", ascending=False).head(top)
+    if ranking.empty:
+        return _empty_figure("Ningún material con muestras suficientes (mínimo 30).")
+
+    fig = px.bar(
+        ranking.reset_index(), x="std", y="material", orientation="h",
+        title="DESVIACIÓN POR MATERIAL (σ %)", color="std",
+        color_continuous_scale=["#34d399", "#fbbf24", "#ef4444"],
+        labels={"std": "Desviación estándar (%)", "material": ""},
+        hover_data={"count": ":,"},
+    )
+    fig.update_layout(coloraxis_showscale=False, yaxis={"categoryorder": "total ascending"})
+    return _style_figure(fig, height=420)
