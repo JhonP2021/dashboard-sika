@@ -63,11 +63,31 @@ def _add_run_batch_counter(result: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _canonical_formula_label(result: pd.DataFrame) -> pd.DataFrame:
+    """Un solo nombre visible por producto.
+
+    'CERAM 130 GRIS' y 'CERAM130 GRIS' comparten `formula_key` y filtran igual,
+    pero el desplegable mostraba las dos y parecían productos distintos. Gana la
+    grafía más usada, que es la que el operario escribe bien la mayoría de veces.
+    """
+    if result.empty or "formula_key" not in result:
+        return result
+    counts = result.groupby(["formula_key", "RecipeBB1name"]).size()
+    canonical = counts.sort_values(ascending=False).reset_index().drop_duplicates("formula_key")
+    labels = dict(zip(canonical["formula_key"], canonical["RecipeBB1name"]))
+    result["RecipeBB1name"] = result["formula_key"].map(labels).fillna(result["RecipeBB1name"])
+    return result
+
+
 def clean_m1(df: pd.DataFrame, materials: dict[str, str] | None = None) -> pd.DataFrame:
     result = _coerce_numeric_columns(_parse_datetime_columns(df), exclude={"oiltarget"})
-    formula_source = "RecipeBB1name" if "RecipeBB1name" in result else "Recipe1Name"
+    # Recipe1Name es el nombre del producto; RecipeBB1name es el del big-bag 1 y
+    # en el 88% de los batches dice "No BB1 in Formula". Preferir el segundo
+    # dejaba el filtro de fórmula con 3 opciones en vez de las 159 reales.
+    formula_source = "Recipe1Name" if "Recipe1Name" in result else "RecipeBB1name"
     result["RecipeBB1name"] = result.get(formula_source, pd.Series("", index=result.index)).map(_display_formula)
     result["formula_key"] = result["RecipeBB1name"].map(_formula_key)
+    result = _canonical_formula_label(result)
     if "OperatorName" in result:
         # El operario teclea sus iniciales sin criterio de caja: 'OB' y 'ob' son
         # la misma persona y aparecían como dos entradas en el filtro.
