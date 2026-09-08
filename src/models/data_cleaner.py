@@ -68,6 +68,12 @@ def clean_m1(df: pd.DataFrame, materials: dict[str, str] | None = None) -> pd.Da
     formula_source = "RecipeBB1name" if "RecipeBB1name" in result else "Recipe1Name"
     result["RecipeBB1name"] = result.get(formula_source, pd.Series("", index=result.index)).map(_display_formula)
     result["formula_key"] = result["RecipeBB1name"].map(_formula_key)
+    if "OperatorName" in result:
+        # El operario teclea sus iniciales sin criterio de caja: 'OB' y 'ob' son
+        # la misma persona y aparecían como dos entradas en el filtro.
+        result["OperatorName"] = result["OperatorName"].map(_display_formula)
+    if "LOTE" in result:
+        result["LOTE"] = result["LOTE"].map(_display_formula)
     if {"ReportDate", "ReportTime"}.issubset(result.columns):
         result["report_datetime"] = result["ReportDate"] + result["ReportTime"]
     elif "ReportDate" in result:

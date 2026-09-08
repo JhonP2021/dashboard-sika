@@ -8,10 +8,18 @@ import plotly.graph_objects as go
 SILO_COLORS = ["#38bdf8", "#818cf8", "#34d399", "#fbbf24", "#fb7185", "#c084fc", "#ef4444", "#2dd4bf"]
 
 
-def _style_figure(fig: go.Figure, *, height: int = 350) -> go.Figure:
+# Margen izquierdo por banda. Plotly lo calcula por gráfico según lo que midan
+# las etiquetas del eje, así que dos gráficos vecinos con etiquetas de distinto
+# largo ('OMYACARB' contra 'MG') arrancan el trazado en x distintos y la fila se
+# ve descuadrada. Fijándolo por banda, las áreas de trazado quedan alineadas.
+BAND_LEFT_MARGIN = 52
+RANKING_LEFT_MARGIN = 132
+
+
+def _style_figure(fig: go.Figure, *, height: int = 340, left: int = BAND_LEFT_MARGIN) -> go.Figure:
     fig.update_layout(
         template="plotly_dark", height=height, paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
-        font=dict(color="#f8fafc"), margin=dict(l=42, r=20, t=58, b=42),
+        font=dict(color="#f8fafc"), margin=dict(l=left, r=16, t=10, b=40),
         legend=dict(title="", bgcolor="rgba(14, 17, 23, .75)", orientation="h", y=-.24), barmode="relative",
     )
     fig.update_xaxes(gridcolor="rgba(255,255,255,.08)", color="#cbd5e1")
@@ -31,7 +39,6 @@ def plot_silo_differences(df: pd.DataFrame, *, percentage: bool = False) -> go.F
     suffix = "_pct" if percentage else "_kg"
     value_columns = [f"Silo {number}{suffix}" for number in range(1, 9)]
     present_columns = [column for column in value_columns if column in df]
-    title = "DIFERENCIA DE PESAJES EN SILOS (%)" if percentage else "DIFERENCIA DE PESAJES EN SILOS (kg)"
     if df.empty or "NumberBatchDone1" not in df or not present_columns:
         return _empty_figure("No hay datos para los filtros seleccionados.")
 
@@ -39,7 +46,7 @@ def plot_silo_differences(df: pd.DataFrame, *, percentage: bool = False) -> go.F
     plot_data = plot_data.melt("NumberBatchDone1", var_name="Silo", value_name="Diferencia")
     plot_data["Silo"] = plot_data["Silo"].str.replace(suffix, "", regex=False)
     fig = px.bar(
-        plot_data, x="NumberBatchDone1", y="Diferencia", color="Silo", barmode="relative", title=title,
+        plot_data, x="NumberBatchDone1", y="Diferencia", color="Silo", barmode="relative",
         color_discrete_sequence=SILO_COLORS, labels={"NumberBatchDone1": "Número de batch", "Diferencia": "%" if percentage else "kg"},
     )
     fig.update_yaxes(range=[-40, 20] if percentage else [-20, 40])
@@ -61,11 +68,34 @@ def plot_material_deviation(long: pd.DataFrame, *, top: int = 12) -> go.Figure:
         return _empty_figure("Ningún material con muestras suficientes (mínimo 30).")
 
     fig = px.bar(
-        ranking.reset_index(), x="std", y="material", orientation="h",
-        title="DESVIACIÓN POR MATERIAL (σ %)", color="std",
+        ranking.reset_index(), x="std", y="material", orientation="h", color="std",
         color_continuous_scale=["#34d399", "#fbbf24", "#ef4444"],
         labels={"std": "Desviación estándar (%)", "material": ""},
         hover_data={"count": ":,"},
     )
-    fig.update_layout(coloraxis_showscale=False, yaxis={"categoryorder": "total ascending"})
-    return _style_figure(fig, height=420)
+    fig.update_layout(coloraxis_showscale=False, yaxis={"categoryorder": "total ascending", "automargin": False})
+    return _style_figure(fig, height=300, left=RANKING_LEFT_MARGIN)
+
+
+def plot_operator_deviation(long: pd.DataFrame) -> go.Figure:
+    """Desviación por operario, con el nº de pesajes detrás de cada barra.
+
+    Contraparte de `plot_material_deviation`: si un material se desvía con todos
+    los operarios es del polvo, y si sólo con uno es de operación.
+    """
+    if long.empty or "operario" not in long:
+        return _empty_figure("No hay operarios en los filtros seleccionados.")
+
+    ranking = long.groupby("operario")["pct"].agg(["count", "std"]).dropna(subset=["std"])
+    ranking = ranking[ranking["count"] >= 30].sort_values("std", ascending=False)
+    if ranking.empty:
+        return _empty_figure("Ningún operario con muestras suficientes (mínimo 30).")
+
+    fig = px.bar(
+        ranking.reset_index(), x="std", y="operario", orientation="h", color="std",
+        color_continuous_scale=["#34d399", "#fbbf24", "#ef4444"],
+        labels={"std": "Desviación estándar (%)", "operario": ""},
+        hover_data={"count": ":,"},
+    )
+    fig.update_layout(coloraxis_showscale=False, yaxis={"categoryorder": "total ascending", "automargin": False})
+    return _style_figure(fig, height=300, left=RANKING_LEFT_MARGIN)

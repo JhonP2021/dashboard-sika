@@ -56,6 +56,53 @@ def material_long(df: pd.DataFrame, *, exclude: set[str] | None = None) -> pd.Da
     return long
 
 
+def _isolate_materials(m1: pd.DataFrame, materials: list[str]) -> pd.DataFrame:
+    """Deja sólo la desviación de los materiales pedidos.
+
+    No basta con quedarse con los batches que llevan el polvo: casi todas las
+    recetas llevan cemento y carbonato, así que filtrar por fila no descarta
+    nada. Lo que se quiere ver es la desviación *de ese polvo*, así que además
+    se anulan los silos que en ese batch cargaban otra cosa, y se descartan los
+    batches que quedan sin ningún silo del material.
+    """
+    columns = [silo for silo in range(1, 9) if f"Silo {silo}_material" in m1]
+    if not columns:
+        return m1
+    result = m1.copy()
+    selected = pd.DataFrame(
+        {silo: result[f"Silo {silo}_material"].isin(materials) for silo in columns}
+    )
+    for silo in columns:
+        keep = selected[silo]
+        result.loc[~keep, [f"Silo {silo}_kg", f"Silo {silo}_pct"]] = pd.NA
+    return result[selected.any(axis=1)]
+
+
+def operator_long(df: pd.DataFrame) -> pd.DataFrame:
+    """Una fila por (batch, silo) con el operario que lo dosificó.
+
+    Mismo formato que `material_long`, pero la dimensión es quién estaba en el
+    tablero: separa el error humano del que trae el polvo o el equipo.
+    """
+    if "OperatorName" not in df:
+        return pd.DataFrame(columns=["operario", "silo", "kg", "pct"])
+    frames = []
+    for silo in range(1, 9):
+        pct = f"Silo {silo}_pct"
+        if pct not in df:
+            continue
+        frames.append(pd.DataFrame({
+            "operario": df["OperatorName"],
+            "silo": f"Silo {silo}",
+            "kg": pd.to_numeric(df.get(f"Silo {silo}_kg"), errors="coerce"),
+            "pct": pd.to_numeric(df[pct], errors="coerce"),
+        }))
+    if not frames:
+        return pd.DataFrame(columns=["operario", "silo", "kg", "pct"])
+    long = pd.concat(frames, ignore_index=True)
+    return long[(long["operario"] != "") & long["pct"].notna()]
+
+
 def prepare_dashboard_data(raw_tables: dict[str, pd.DataFrame]) -> DashboardData:
     """Unifica las lecturas de M1 y conserva únicamente producción desde 2026."""
     sources = [raw_tables.get("table_report_m1", pd.DataFrame()), raw_tables.get("table_report_m1_out", pd.DataFrame())]
@@ -91,8 +138,5 @@ def apply_dashboard_filters(
     if batch_range and "NumberBatchDone1" in m1:
         m1 = m1[m1["NumberBatchDone1"].between(*batch_range)]
     if materials:
-        # Un batch entra si CUALQUIERA de sus silos lleva el material pedido.
-        columns = [f"Silo {silo}_material" for silo in range(1, 9) if f"Silo {silo}_material" in m1]
-        if columns:
-            m1 = m1[m1[columns].isin(materials).any(axis=1)]
+        m1 = _isolate_materials(m1, materials)
     return DashboardData(table_date=dataset.table_date, m1=m1)

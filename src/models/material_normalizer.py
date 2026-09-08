@@ -54,7 +54,7 @@ _STATUS_MARKER = re.compile(
 
 # Familias en orden de prioridad: la primera que casa, gana.
 _FAMILY_RULES: list[tuple[str, re.Pattern]] = [
-    ("ARENA", re.compile(r"\bAR[FN]?ENA[A-Z]*|\bFINA\s*GRUESA\b|\bFG\b|\bGRUSA\b")),
+    ("ARENA", re.compile(r"\bAR[FNR]?ENA[A-Z]*|\bFINA\s*GRUESA\b|\bFG\b|\bGRUSA\b")),
     ("CEMENTO", re.compile(r"\bCEMENTO?S?\b|\bCTO\b")),
     ("OMYA", re.compile(r"\bOM+YA\w*\b|\bCARBONATO\b")),
     ("CENIZA", re.compile(r"\bCENIZA\b")),

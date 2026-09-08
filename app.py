@@ -7,25 +7,22 @@ import pandas as pd
 import streamlit as st
 
 from config.settings import get_settings
-from src.components.charts import plot_material_deviation, plot_silo_differences
+from src.components.charts import (
+    plot_material_deviation, plot_operator_deviation, plot_silo_differences,
+)
 from src.components.kpi_cards import render_silo_kpis
+from src.components.layout import CARD_CSS, card
 from src.components.sidebar import render_sidebar
 from src.data.access_loader import AccessTableLoader
 from src.data.csv_loader import CSVTableLoader
 from src.models.data_merger import (
-    apply_dashboard_filters, material_long, prepare_dashboard_data, status_canonicals,
+    apply_dashboard_filters, material_long, operator_long, prepare_dashboard_data,
+    status_canonicals,
 )
 
 
 st.set_page_config(page_title="Control de Pesajes · Sika", layout="wide")
-st.markdown("""
-<style>
-.stApp { background: linear-gradient(180deg, #0e1117 0%, #111827 100%); color: #f9fafb; }
-[data-testid="stSidebar"] { background: #121722; border-right: 1px solid rgba(255,255,255,.08); }
-.block-container { padding-top: 1.2rem; padding-bottom: 1.5rem; }
-div[data-testid="stMetric"] { background: #151a24; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: .7rem .8rem; }
-</style>
-""", unsafe_allow_html=True)
+st.markdown(CARD_CSS, unsafe_allow_html=True)
 
 
 @st.cache_data(ttl=3 * 60 * 60, show_spinner="Actualizando datos de producción...")
@@ -57,7 +54,6 @@ def _detail_table(df: pd.DataFrame, tolerance: float) -> pd.io.formats.style.Sty
 def main() -> None:
     settings = get_settings()
     st.title("Control de desviaciones de pesaje")
-    st.caption(f"Modo {settings.mode} · Datos desde 2026 · Recarga de caché cada 3 horas")
 
     dataset = load_dashboard_data(settings.mode, _source_fingerprint(settings))
     data = dataset.m1
@@ -69,8 +65,8 @@ def main() -> None:
         label: key for label, key in data[["RecipeBB1name", "formula_key"]].drop_duplicates().sort_values("RecipeBB1name").itertuples(index=False, name=None)
         if label and key
     }
-    operators = sorted(data["OperatorName"].dropna().astype(str).unique()) if "OperatorName" in data else []
-    lots = sorted(data["LOTE"].dropna().astype(str).unique()) if "LOTE" in data else []
+    operators = sorted(o for o in data["OperatorName"].dropna().astype(str).unique() if o) if "OperatorName" in data else []
+    lots = sorted(l for l in data["LOTE"].dropna().astype(str).unique() if l) if "LOTE" in data else []
     batch_series = pd.to_numeric(data.get("NumberBatchDone1"), errors="coerce").dropna()
     batch_bounds = (int(batch_series.min()), int(batch_series.max())) if not batch_series.empty else None
     hidden = status_canonicals()
@@ -91,19 +87,31 @@ def main() -> None:
 
     st.sidebar.metric("Batches fabricados", f"{len(filtered):,}")
     tolerance = float(os.getenv("DASHBOARD_TOLERANCE_PCT", "5"))
-    st.caption(f"{len(filtered):,} batches bajo el filtro activo · celdas rojas: desvío superior a ±{tolerance:g}%.")
-    render_silo_kpis(filtered)
+    # Una sola línea de contexto: el detalle de tolerancia vive en la tarjeta.
+    st.caption(
+        f"{len(filtered):,} batches bajo el filtro activo · modo {settings.mode} · caché 3 h"
+    )
+    render_silo_kpis(filtered, tolerance)
 
-    left, right = st.columns((1.12, 1), gap="large")
-    with left:
-        st.subheader("Detalle de batches")
-        st.dataframe(_detail_table(filtered, tolerance), use_container_width=True, hide_index=True, height=710)
-    with right:
+    # La distribución va en bandas a ancho completo: primero el dato crudo
+    # (la tabla, once columnas que necesitan el ancho entero) y debajo las
+    # lecturas agregadas, emparejadas por la pregunta que responden. Dentro de
+    # cada banda las columnas son iguales para que los dos gráficos compartan
+    # geometría y no se vean corridos.
+    with card("Detalle de batches", f"{len(filtered):,} filas · rojo sobre ±{tolerance:g}%"):
+        st.dataframe(_detail_table(filtered, tolerance), use_container_width=True, hide_index=True, height=430)
+
+    kg_column, pct_column = st.columns(2, gap="medium")
+    with kg_column, card("Diferencia de pesajes en silos", "kg"):
         st.plotly_chart(plot_silo_differences(filtered), use_container_width=True)
+    with pct_column, card("Diferencia de pesajes en silos", "%"):
         st.plotly_chart(plot_silo_differences(filtered, percentage=True), use_container_width=True)
-        st.plotly_chart(
-            plot_material_deviation(material_long(filtered, exclude=hidden)), use_container_width=True
-        )
+
+    material_column, operator_column = st.columns(2, gap="medium")
+    with material_column, card("Desviación por material", "σ %"):
+        st.plotly_chart(plot_material_deviation(material_long(filtered, exclude=hidden)), use_container_width=True)
+    with operator_column, card("Desviación por operario", "σ %"):
+        st.plotly_chart(plot_operator_deviation(operator_long(filtered)), use_container_width=True)
 
 
 if __name__ == "__main__":
