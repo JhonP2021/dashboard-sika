@@ -22,18 +22,42 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
 
     date_range = None
     if min_date is not None and max_date is not None:
-        # Arranca en los últimos dos meses con datos: el histórico entero sigue
-        # disponible en el selector, pero abrir con 388k filas pintadas no sirve
-        # de nada. Antes esto era un 2026-05-01 fijo que caducaba solo.
         default_start = max(min_date, max_date - timedelta(days=60))
-        selected_dates = st.sidebar.date_input(
-            "Rango de fechas",
-            value=(default_start, max_date),
-            min_value=min_date,
-            max_value=max_date,
+        applied_key = "dashboard_applied_dates"
+        previous = st.session_state.get(applied_key)
+        if previous is None or not (min_date <= previous[0] <= previous[1] <= max_date):
+            st.session_state[applied_key] = (default_start, max_date)
+            st.session_state["dashboard_date_start"] = default_start
+            st.session_state["dashboard_date_end"] = max_date
+
+        if st.sidebar.button("Todo el histórico"):
+            st.session_state[applied_key] = (min_date, max_date)
+            st.session_state["dashboard_date_start"] = min_date
+            st.session_state["dashboard_date_end"] = max_date
+
+        with st.sidebar.form("dashboard_dates"):
+            start = st.date_input(
+                "Desde", min_value=min_date, max_value=max_date,
+                key="dashboard_date_start", format="DD/MM/YYYY",
+            )
+            end = st.date_input(
+                "Hasta", min_value=min_date, max_value=max_date,
+                key="dashboard_date_end", format="DD/MM/YYYY",
+            )
+            submitted = st.form_submit_button("Aplicar fechas")
+        if submitted:
+            if start is None or end is None:
+                st.sidebar.error("Completa las dos fechas. Se mantiene el rango anterior.")
+            elif start > end:
+                st.sidebar.error("Desde debe ser anterior o igual a Hasta. Se mantiene el rango anterior.")
+            elif not (min_date <= start <= end <= max_date):
+                st.sidebar.error("El rango debe estar dentro de las fechas disponibles.")
+            else:
+                st.session_state[applied_key] = (start, end)
+        date_range = st.session_state[applied_key]
+        st.sidebar.caption(
+            f"Rango aplicado: {date_range[0]:%d/%m/%Y} – {date_range[1]:%d/%m/%Y} (ambos días incluidos)."
         )
-        if isinstance(selected_dates, tuple) and len(selected_dates) == 2:
-            date_range = selected_dates
 
     selected_formula_labels = st.sidebar.multiselect(
         "Producto / fórmula",
