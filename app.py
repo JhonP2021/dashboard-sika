@@ -37,13 +37,22 @@ def _source_fingerprint(settings) -> tuple:
     return tuple(path.stat().st_mtime if path and path.exists() else 0.0 for path in paths)
 
 
+# Filas que se pasan al Styler. Colorear celda a celda es caro y pandas corta en
+# 262.144 celdas: con 11 columnas son ~23.800 filas, justo lo que había antes de
+# levantar el recorte por año. La tabla es una vista de detalle de 430 px, así
+# que pintar el histórico entero no aporta nada.
+DETAIL_ROWS = 1000
+
+
 def _detail_table(df: pd.DataFrame, tolerance: float) -> pd.io.formats.style.Styler:
+    # Lo más reciente primero: el batch que acaba de salir mal es el que se mira.
+    recent = df.sort_values("report_datetime", ascending=False, kind="stable").head(DETAIL_ROWS)
     result = pd.DataFrame()
-    result["FECHA"] = pd.to_datetime(df.get("report_datetime"), errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
-    result["OperatorName"] = df.get("OperatorName", "")
-    result["RecipeBB1name"] = df.get("RecipeBB1name", "")
+    result["FECHA"] = pd.to_datetime(recent.get("report_datetime"), errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+    result["OperatorName"] = recent.get("OperatorName", "")
+    result["RecipeBB1name"] = recent.get("RecipeBB1name", "")
     for silo in range(1, 9):
-        result[f"s{silo} dif %"] = pd.to_numeric(df.get(f"Silo {silo}_pct"), errors="coerce")
+        result[f"s{silo} dif %"] = pd.to_numeric(recent.get(f"Silo {silo}_pct"), errors="coerce")
 
     deviation_columns = [f"s{silo} dif %" for silo in range(1, 9)]
     def highlight(value):
@@ -98,7 +107,10 @@ def main() -> None:
     # lecturas agregadas, emparejadas por la pregunta que responden. Dentro de
     # cada banda las columnas son iguales para que los dos gráficos compartan
     # geometría y no se vean corridos.
-    with card("Detalle de batches", f"{len(filtered):,} filas · rojo sobre ±{tolerance:g}%"):
+    shown = min(len(filtered), DETAIL_ROWS)
+    subtitle = (f"{shown:,} más recientes de {len(filtered):,}" if len(filtered) > DETAIL_ROWS
+                else f"{len(filtered):,} filas")
+    with card("Detalle de batches", f"{subtitle} · rojo sobre ±{tolerance:g}%"):
         st.dataframe(_detail_table(filtered, tolerance), use_container_width=True, hide_index=True, height=430)
 
     kg_column, pct_column = st.columns(2, gap="medium")
