@@ -35,21 +35,41 @@ def _empty_figure(message: str) -> go.Figure:
     return _style_figure(fig, height=300)
 
 
+# Limita el trabajo del navegador, sin descartar registros del histórico.
+SILO_PLOT_BLOCKS = 500
+
+
 def plot_silo_differences(df: pd.DataFrame, *, percentage: bool = False) -> go.Figure:
     suffix = "_pct" if percentage else "_kg"
-    value_columns = [f"Silo {number}{suffix}" for number in range(1, 9)]
-    present_columns = [column for column in value_columns if column in df]
-    if df.empty or "NumberBatchDone1" not in df or not present_columns:
+    columns = [f"Silo {number}{suffix}" for number in range(1, 9) if f"Silo {number}{suffix}" in df]
+    if df.empty or "report_datetime" not in df or not columns:
         return _empty_figure("No hay datos para los filtros seleccionados.")
 
-    plot_data = df[["NumberBatchDone1", *present_columns]].copy().sort_values("NumberBatchDone1")
-    plot_data = plot_data.melt("NumberBatchDone1", var_name="Silo", value_name="Diferencia")
-    plot_data["Silo"] = plot_data["Silo"].str.replace(suffix, "", regex=False)
-    fig = px.bar(
-        plot_data, x="NumberBatchDone1", y="Diferencia", color="Silo", barmode="relative",
-        color_discrete_sequence=SILO_COLORS, labels={"NumberBatchDone1": "Número de batch", "Diferencia": "%" if percentage else "kg"},
-    )
-    fig.update_yaxes(range=[-40, 20] if percentage else [-20, 40])
+    data = df[["report_datetime", *columns]].dropna(subset=["report_datetime"])
+    data = data.sort_values("report_datetime", kind="stable").reset_index(drop=True)
+    if data.empty:
+        return _empty_figure("No hay datos para los filtros seleccionados.")
+    block_size = max(1, (len(data) + SILO_PLOT_BLOCKS - 1) // SILO_PLOT_BLOCKS)
+    groups = data.groupby(data.index // block_size)
+    dates = groups["report_datetime"].agg(["first", "last"])
+    fig = go.Figure()
+    for column in columns:
+        stats = groups[column].agg(["mean", "min", "max", "count"])
+        silo = int(column.split()[1].split("_")[0])
+        fig.add_trace(go.Scatter(
+            x=dates["first"], y=stats["mean"], name=f"Silo {silo}",
+            mode="markers", marker=dict(size=4, color=SILO_COLORS[silo - 1]),
+            error_y=dict(type="data", symmetric=False,
+                         array=stats["max"] - stats["mean"],
+                         arrayminus=stats["mean"] - stats["min"], thickness=1, width=2),
+            customdata=pd.DataFrame({"end": dates["last"].astype(str),
+                                     "count": stats["count"], "min": stats["min"], "max": stats["max"]}).to_numpy(),
+            hovertemplate="Desde %{x}<br>Hasta %{customdata[0]}<br>Promedio: %{y:.2f}"
+                          "<br>Mínimo: %{customdata[2]:.2f}<br>Máximo: %{customdata[3]:.2f}"
+                          "<br>Pesajes: %{customdata[1]}<extra>%{fullData.name}</extra>",
+        ))
+    fig.update_xaxes(title="Fecha · bloques cronológicos")
+    fig.update_yaxes(title="%" if percentage else "kg")
     return _style_figure(fig)
 
 

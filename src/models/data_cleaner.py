@@ -102,6 +102,7 @@ def clean_m1(df: pd.DataFrame, materials: dict[str, str] | None = None,
     else:
         result["report_datetime"] = pd.NaT
     result["report_day"] = pd.to_datetime(result["report_datetime"], errors="coerce").dt.date
+    result = result[result["report_datetime"].notna()].copy()
     if min_year is not None:
         years = pd.to_datetime(result["report_datetime"], errors="coerce").dt.year
         result = result[years >= min_year]
@@ -111,13 +112,19 @@ def clean_m1(df: pd.DataFrame, materials: dict[str, str] | None = None,
         kg_source, pct_source = f"Differentiel_Silo_{silo}", f"Differentiel_Silo_{silo}_PC"
         result[f"Silo {silo}_kg"] = pd.to_numeric(result.get(kg_source), errors="coerce")
         result[f"Silo {silo}_pct"] = pd.to_numeric(result.get(pct_source), errors="coerce")
+        target, actual = f"Silo{silo}Target", f"Silo{silo}Real"
+        if target in result and actual in result:
+            unused = (pd.to_numeric(result[target], errors="coerce").eq(0)
+                      & pd.to_numeric(result[actual], errors="coerce").eq(0))
+            result.loc[unused, [f"Silo {silo}_kg", f"Silo {silo}_pct"]] = float("nan")
     if materials is not None:
         # El operador teclea el material a mano en cada silo: sin canonizar,
         # 'ARENA  16/50' y 'ARENA 16/50' cuentan como polvos distintos.
         for silo in range(1, 9):
             source = result.get(f"Silo{silo}Des")
             result[f"Silo {silo}_material"] = (
-                source.map(lambda v: canonical_material(v, materials))
+                source.fillna("").map({value: canonical_material(value, materials)
+                                     for value in source.fillna("").unique()})
                 if source is not None else ""
             )
     if "NumberBatchDone1" in result:

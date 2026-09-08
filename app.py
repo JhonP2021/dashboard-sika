@@ -113,6 +113,7 @@ def main() -> None:
     with card("Detalle de batches", f"{subtitle} · rojo sobre ±{tolerance:g}%"):
         st.dataframe(_detail_table(filtered, tolerance), use_container_width=True, hide_index=True, height=430)
 
+    st.caption("Gráficos de silos: hasta 500 bloques cronológicos; punto = promedio, barra = mínimo–máximo. Incluyen todo el filtro activo.")
     kg_column, pct_column = st.columns(2, gap="medium")
     with kg_column, card("Diferencia de pesajes en silos", "kg"):
         st.plotly_chart(plot_silo_differences(filtered), use_container_width=True)

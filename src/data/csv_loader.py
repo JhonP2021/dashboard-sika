@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import pandas as pd
@@ -20,7 +21,9 @@ except Exception:  # pragma: no cover
 
 @cache_data(show_spinner=False)
 def _cached_read_csv(file_path: str, file_mtime: float) -> pd.DataFrame:
-    return pd.read_csv(file_path, encoding="utf-8-sig", sep=None, engine="python")
+    with open(file_path, encoding="utf-8-sig", newline="") as source:
+        delimiter = csv.Sniffer().sniff(source.read(65536), delimiters=",;\t|").delimiter
+    return pd.read_csv(file_path, encoding="utf-8-sig", sep=delimiter, low_memory=False)
 
 
 class CSVTableLoader(BaseLoader):
