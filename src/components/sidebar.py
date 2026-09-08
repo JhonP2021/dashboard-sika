@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -22,7 +22,10 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
 
     date_range = None
     if min_date is not None and max_date is not None:
-        default_start = max(min_date, date(2026, 5, 1))
+        # Arranca en los últimos dos meses con datos: el histórico entero sigue
+        # disponible en el selector, pero abrir con 388k filas pintadas no sirve
+        # de nada. Antes esto era un 2026-05-01 fijo que caducaba solo.
+        default_start = max(min_date, max_date - timedelta(days=60))
         selected_dates = st.sidebar.date_input(
             "Rango de fechas",
             value=(default_start, max_date),
@@ -64,6 +67,6 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
             value=batch_bounds, step=1, help="Número de batch reportado por el mezclador.",
         )
 
-    st.sidebar.caption("Datos desde 2026 · actualización automática cada 3 horas.")
+    st.sidebar.caption("Actualización automática cada 3 horas.")
 
     return SidebarFilters(date_range, formula_keys, operators, lots, materials, batch_range)

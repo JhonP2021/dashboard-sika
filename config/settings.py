@@ -23,6 +23,7 @@ class AppSettings:
     data_dir: Path
     csv_paths: dict[str, Path]
     materials_map_path: Path
+    min_year: int | None
     access_db_path: Path | None
     access_connection_string: str | None
     access_tables: dict[str, str]
@@ -40,6 +41,16 @@ def _build_access_connection_string(database_path: str | None) -> str | None:
         f"{readonly_clause}"
         "ExtendedAnsiSQL=1;"
     )
+
+
+def _min_year() -> int | None:
+    """Año a partir del cual se cargan datos. Vacío = todo el histórico.
+
+    El recorte estaba fijo en 2026 y dejaba fuera el 94% de los registros
+    (23.671 de 388.803) sin que se pudiera cambiar sin tocar código.
+    """
+    raw = os.getenv("DASHBOARD_MIN_YEAR", "").strip()
+    return int(raw) if raw else None
 
 
 @lru_cache(maxsize=1)
@@ -61,6 +72,7 @@ def get_settings() -> AppSettings:
         data_dir=DATA_DIR,
         csv_paths=csv_paths,
         materials_map_path=BASE_DIR / "config" / "materials_map.csv",
+        min_year=_min_year(),
         access_db_path=access_path,
         access_connection_string=_build_access_connection_string(str(access_path) if access_path else None),
         access_tables=access_tables,

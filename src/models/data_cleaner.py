@@ -79,7 +79,8 @@ def _canonical_formula_label(result: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def clean_m1(df: pd.DataFrame, materials: dict[str, str] | None = None) -> pd.DataFrame:
+def clean_m1(df: pd.DataFrame, materials: dict[str, str] | None = None,
+              min_year: int | None = None) -> pd.DataFrame:
     result = _coerce_numeric_columns(_parse_datetime_columns(df), exclude={"oiltarget"})
     # Recipe1Name es el nombre del producto; RecipeBB1name es el del big-bag 1 y
     # en el 88% de los batches dice "No BB1 in Formula". Preferir el segundo
@@ -101,7 +102,10 @@ def clean_m1(df: pd.DataFrame, materials: dict[str, str] | None = None) -> pd.Da
     else:
         result["report_datetime"] = pd.NaT
     result["report_day"] = pd.to_datetime(result["report_datetime"], errors="coerce").dt.date
-    result = result[pd.to_datetime(result["report_datetime"], errors="coerce").dt.year >= 2026].copy()
+    if min_year is not None:
+        years = pd.to_datetime(result["report_datetime"], errors="coerce").dt.year
+        result = result[years >= min_year]
+    result = result.copy()
 
     for silo in range(1, 9):
         kg_source, pct_source = f"Differentiel_Silo_{silo}", f"Differentiel_Silo_{silo}_PC"

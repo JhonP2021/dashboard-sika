@@ -111,7 +111,7 @@ def prepare_dashboard_data(raw_tables: dict[str, pd.DataFrame]) -> DashboardData
     raw_dedupe_columns = [column for column in ["ReportDate", "ReportTime", "RecipeBB1name", "NumberBatchDone1", "OperatorName"] if column in raw_m1]
     if raw_dedupe_columns:
         raw_m1 = raw_m1.drop_duplicates(subset=raw_dedupe_columns, keep="last")
-    m1 = clean_m1(raw_m1, materials=_load_materials())
+    m1 = clean_m1(raw_m1, materials=_load_materials(), min_year=get_settings().min_year)
     return DashboardData(table_date=clean_table_date(raw_tables.get("table_date", pd.DataFrame())), m1=m1)
 
 

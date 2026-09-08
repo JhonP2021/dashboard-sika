@@ -58,7 +58,7 @@ def main() -> None:
     dataset = load_dashboard_data(settings.mode, _source_fingerprint(settings))
     data = dataset.m1
     if data.empty:
-        st.warning("No hay registros de producción desde 2026 en la fuente actual.")
+        st.warning("La fuente actual no tiene registros de producción.")
         return
 
     formula_mapping = {
