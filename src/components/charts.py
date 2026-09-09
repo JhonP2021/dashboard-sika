@@ -18,12 +18,12 @@ RANKING_LEFT_MARGIN = 132
 
 def _style_figure(fig: go.Figure, *, height: int = 340, left: int = BAND_LEFT_MARGIN) -> go.Figure:
     fig.update_layout(
-        template="plotly_dark", height=height, paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
-        font=dict(color="#f8fafc"), margin=dict(l=left, r=16, t=10, b=40),
-        legend=dict(title="", bgcolor="rgba(14, 17, 23, .75)", orientation="h", y=-.24), barmode="relative",
+        template="plotly_dark", height=height, paper_bgcolor="#141924", plot_bgcolor="#141924",
+        font=dict(color="#c3ccd8", family="Arial", size=11), margin=dict(l=left, r=16, t=10, b=40),
+        legend=dict(title="", bgcolor="rgba(0,0,0,0)", orientation="h", y=-.24), barmode="relative",
     )
-    fig.update_xaxes(gridcolor="rgba(255,255,255,.08)", color="#cbd5e1")
-    fig.update_yaxes(gridcolor="rgba(255,255,255,.08)", zeroline=True, zerolinecolor="rgba(255,255,255,.3)", color="#cbd5e1")
+    fig.update_xaxes(gridcolor="rgba(255,255,255,.08)", color="#8f9bab")
+    fig.update_yaxes(gridcolor="rgba(255,255,255,.08)", zeroline=True, zerolinecolor="rgba(255,255,255,.28)", color="#8f9bab")
     return fig
 
 

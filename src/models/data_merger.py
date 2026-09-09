@@ -28,6 +28,15 @@ def _load_materials() -> dict[str, str] | None:
     return load_canonical_map(path) if path.exists() else None
 
 
+def _used_silo(df: pd.DataFrame, silo: int) -> pd.Series:
+    """Excluir no-pesajes sólo de las muestras, sin alterar valores reportados."""
+    target, actual = f"Silo{silo}Target", f"Silo{silo}Real"
+    if target not in df or actual not in df:
+        return pd.Series(True, index=df.index)
+    return ~(pd.to_numeric(df[target], errors="coerce").eq(0)
+             & pd.to_numeric(df[actual], errors="coerce").eq(0))
+
+
 def material_long(df: pd.DataFrame, *, exclude: set[str] | None = None) -> pd.DataFrame:
     """Una fila por (batch, silo) con su material y su desviación.
 
@@ -45,7 +54,7 @@ def material_long(df: pd.DataFrame, *, exclude: set[str] | None = None) -> pd.Da
             "kg": pd.to_numeric(df.get(kg), errors="coerce"),
             "pct": pd.to_numeric(df.get(pct), errors="coerce"),
         })
-        frames.append(piece)
+        frames.append(piece.loc[_used_silo(df, silo)])
     if not frames:
         return pd.DataFrame(columns=["material", "silo", "kg", "pct"])
     long = pd.concat(frames, ignore_index=True)
@@ -96,7 +105,7 @@ def operator_long(df: pd.DataFrame) -> pd.DataFrame:
             "silo": f"Silo {silo}",
             "kg": pd.to_numeric(df.get(f"Silo {silo}_kg"), errors="coerce"),
             "pct": pd.to_numeric(df[pct], errors="coerce"),
-        }))
+        }).loc[_used_silo(df, silo)])
     if not frames:
         return pd.DataFrame(columns=["operario", "silo", "kg", "pct"])
     long = pd.concat(frames, ignore_index=True)

@@ -6,6 +6,8 @@ from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
 
+from src.components.layout import brand_markup
+
 
 @dataclass(frozen=True)
 class SidebarFilters:
@@ -18,7 +20,8 @@ class SidebarFilters:
 
 
 def render_sidebar(*, formula_options: dict[str, str], available_operators: list[str], available_lots: list[str], min_date, max_date, batch_bounds: tuple[int, int] | None, available_materials: list[str] | None = None) -> SidebarFilters:
-    st.sidebar.header("Filtros")
+    st.sidebar.markdown(brand_markup(), unsafe_allow_html=True)
+    st.sidebar.header("Filtros de producción")
 
     date_range = None
     if min_date is not None and max_date is not None:
@@ -62,19 +65,22 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
     selected_formula_labels = st.sidebar.multiselect(
         "Producto / fórmula",
         options=list(formula_options.keys()),
-        default=list(formula_options.keys()),
+        default=[],
+        placeholder="Todos los productos",
+        help="Sin selección se incluyen todos los productos.",
     )
     formula_keys = [formula_options[label] for label in selected_formula_labels]
 
     operators = st.sidebar.multiselect(
         "Operario",
         options=available_operators,
-        default=available_operators[:],
+        default=[],
+        placeholder="Todos los operarios",
     )
 
     lots: list[str] = []
     if available_lots:
-        lots = st.sidebar.multiselect("Lote", options=available_lots, default=available_lots)
+        lots = st.sidebar.multiselect("Lote", options=available_lots, default=[], placeholder="Todos los lotes")
 
     materials: list[str] = []
     if available_materials:
@@ -91,6 +97,6 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
             value=batch_bounds, step=1, help="Número de batch reportado por el mezclador.",
         )
 
-    st.sidebar.caption("Actualización automática cada 3 horas.")
+    st.sidebar.caption("Selecciona productos o materiales para acotar el análisis.")
 
     return SidebarFilters(date_range, formula_keys, operators, lots, materials, batch_range)

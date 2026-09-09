@@ -34,7 +34,9 @@ def load_dashboard_data(mode: str, source_fingerprint: tuple):
 
 def _source_fingerprint(settings) -> tuple:
     paths = settings.csv_paths.values() if settings.mode == "DEV" else [settings.access_db_path]
-    return tuple(path.stat().st_mtime if path and path.exists() else 0.0 for path in paths)
+    return ("reported-silo-values-v2", settings.min_year,
+            settings.materials_map_path.stat().st_mtime if settings.materials_map_path.exists() else 0,
+            *(path.stat().st_mtime if path and path.exists() else 0.0 for path in paths))
 
 
 # Filas que se pasan al Styler. Colorear celda a celda es caro y pandas corta en
@@ -44,25 +46,43 @@ def _source_fingerprint(settings) -> tuple:
 DETAIL_ROWS = 1000
 
 
-def _detail_table(df: pd.DataFrame, tolerance: float) -> pd.io.formats.style.Styler:
+def _detail_table(df: pd.DataFrame, tolerance: float, materials: list[str] | None = None) -> pd.io.formats.style.Styler:
     # Lo más reciente primero: el batch que acaba de salir mal es el que se mira.
     recent = df.sort_values("report_datetime", ascending=False, kind="stable").head(DETAIL_ROWS)
     result = pd.DataFrame()
-    result["FECHA"] = pd.to_datetime(recent.get("report_datetime"), errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
-    result["OperatorName"] = recent.get("OperatorName", "")
-    result["RecipeBB1name"] = recent.get("RecipeBB1name", "")
+    result["Fecha"] = pd.to_datetime(recent.get("report_datetime"), errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+    result["Operario"] = recent.get("OperatorName", "")
+    result["Producto"] = recent.get("RecipeBB1name", "")
     for silo in range(1, 9):
-        result[f"s{silo} dif %"] = pd.to_numeric(recent.get(f"Silo {silo}_pct"), errors="coerce")
+        values = pd.to_numeric(recent.get(f"Silo {silo}_pct"), errors="coerce")
+        display = values.map(lambda value: "Sin dato" if pd.isna(value) else f"{value:.2f}%")
+        material_column = f"Silo {silo}_material"
+        if material_column in recent:
+            # Un valor anulado por el filtro de material tampoco es un dato perdido.
+            selected = materials or []
+            if selected:
+                display.loc[~recent[material_column].isin(selected)] = "Fuera del filtro"
+        result[f"s{silo} dif %"] = display
 
     deviation_columns = [f"s{silo} dif %" for silo in range(1, 9)]
     def highlight(value):
-        return "background-color: #7f1d1d; color: #ffffff; font-weight: 700" if pd.notna(value) and abs(value) > tolerance else ""
-    return result.style.map(highlight, subset=deviation_columns).format({column: "{:.2f}%" for column in deviation_columns}, na_rep="—")
+        if value == "Sin dato":
+            return "background-color: rgba(251,191,36,.15); color: #fcd34d; font-weight: 600"
+        if value == "Fuera del filtro":
+            return "background-color: rgba(255,255,255,.05); color: #8f9bab"
+        if isinstance(value, str) and value.endswith("%"):
+            magnitude = abs(float(value[:-1]))
+            if magnitude > 2 * tolerance:
+                return "background-color: rgba(239,68,68,.18); color: #fca5a5; font-weight: 700"
+            if magnitude > tolerance:
+                return "background-color: rgba(251,191,36,.15); color: #fcd34d; font-weight: 700"
+        return ""
+    return result.style.map(highlight, subset=deviation_columns)
 
 
 def main() -> None:
     settings = get_settings()
-    st.title("Control de desviaciones de pesaje")
+    st.markdown('<div class="hero"><div><h1>Control de desviaciones de pesaje</h1></div></div>', unsafe_allow_html=True)
 
     dataset = load_dashboard_data(settings.mode, _source_fingerprint(settings))
     data = dataset.m1
@@ -94,13 +114,16 @@ def main() -> None:
         materials=filters.materials,
     ).m1
 
-    st.sidebar.metric("Batches fabricados", f"{len(filtered):,}")
     tolerance = float(os.getenv("DASHBOARD_TOLERANCE_PCT", "5"))
-    # Una sola línea de contexto: el detalle de tolerancia vive en la tarjeta.
-    st.caption(
-        f"{len(filtered):,} batches bajo el filtro activo · modo {settings.mode} · caché 3 h"
+    period = (f"{filters.date_range[0]:%d/%m/%Y} — {filters.date_range[1]:%d/%m/%Y}"
+              if filters.date_range else "Todo el histórico")
+    st.markdown(
+        f'<div class="summary"><div><div class="summary-number">{len(filtered):,}</div>'
+        f'<div class="summary-label">Batches en el período</div></div>'
+        f'<div class="summary-period">{period}<div class="summary-label">Tolerancia de pesaje ±{tolerance:g}%</div></div></div>',
+        unsafe_allow_html=True,
     )
-    render_silo_kpis(filtered, tolerance)
+    render_silo_kpis(filtered, tolerance, filters.materials)
 
     # La distribución va en bandas a ancho completo: primero el dato crudo
     # (la tabla, once columnas que necesitan el ancho entero) y debajo las
@@ -110,8 +133,9 @@ def main() -> None:
     shown = min(len(filtered), DETAIL_ROWS)
     subtitle = (f"{shown:,} más recientes de {len(filtered):,}" if len(filtered) > DETAIL_ROWS
                 else f"{len(filtered):,} filas")
-    with card("Detalle de batches", f"{subtitle} · rojo sobre ±{tolerance:g}%"):
-        st.dataframe(_detail_table(filtered, tolerance), use_container_width=True, hide_index=True, height=430)
+    with card("Detalle de batches", f"{subtitle} · alertas de pesaje"):
+        st.caption(f"Ámbar: más de ±{tolerance:g}% · Rojo: más de ±{2*tolerance:g}% · Gris: fuera del filtro. Se conservan los ceros reportados de silos sin uso.")
+        st.dataframe(_detail_table(filtered, tolerance, filters.materials), use_container_width=True, hide_index=True, height=430)
 
     st.caption("Gráficos de silos: hasta 500 bloques cronológicos; punto = promedio, barra = mínimo–máximo. Incluyen todo el filtro activo.")
     kg_column, pct_column = st.columns(2, gap="medium")
