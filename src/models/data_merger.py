@@ -7,6 +7,7 @@ import pandas as pd
 from config.settings import get_settings
 from src.models.data_cleaner import clean_m1, clean_table_date
 from src.models.material_normalizer import load_canonical_map, load_status_canonicals
+from src.models.silo_metrics import valid_weighings
 
 
 @dataclass(frozen=True)
@@ -29,12 +30,14 @@ def _load_materials() -> dict[str, str] | None:
 
 
 def _used_silo(df: pd.DataFrame, silo: int) -> pd.Series:
-    """Excluir no-pesajes sólo de las muestras, sin alterar valores reportados."""
-    target, actual = f"Silo{silo}Target", f"Silo{silo}Real"
-    if target not in df or actual not in df:
-        return pd.Series(True, index=df.index)
-    return ~(pd.to_numeric(df[target], errors="coerce").eq(0)
-             & pd.to_numeric(df[actual], errors="coerce").eq(0))
+    """Excluir no-pesajes sólo de las muestras, sin alterar valores reportados.
+
+    Delega en el criterio único de `silo_metrics`: antes descartaba el caso
+    "objetivo 0 y real 0" pero conservaba "objetivo 0 con real distinto de 0",
+    que es justo el que las tarjetas excluyen. Con dos poblaciones distintas,
+    la sigma de las tarjetas y la de estos gráficos no podían coincidir.
+    """
+    return valid_weighings(df, silo)
 
 
 def material_long(df: pd.DataFrame, *, exclude: set[str] | None = None) -> pd.DataFrame:
@@ -112,6 +115,21 @@ def operator_long(df: pd.DataFrame) -> pd.DataFrame:
     return long[(long["operario"] != "") & long["pct"].notna()]
 
 
+def _project(m1: pd.DataFrame) -> pd.DataFrame:
+    """Se queda con lo que el dashboard usa antes de que entre en la caché.
+
+    El CSV trae 117 columnas y la limpieza añade hasta 149; el dashboard lee unas
+    40. `st.cache_data` guarda el valor serializado y no lo desaloja nunca, así
+    que arrastrar el resto costaba ~1 GB por entrada con el histórico completo.
+    """
+    keep = ["report_datetime", "report_day", "OperatorName", "RecipeBB1name", "formula_key",
+            "LOTE", "NumberBatchDone1", "corrida_id", "batch_corrido"]
+    for silo in range(1, 9):
+        keep += [f"Silo {silo}_pct", f"Silo {silo}_kg", f"Silo {silo}_material",
+                 f"Silo{silo}Target", f"Silo{silo}Real"]
+    return m1[[column for column in keep if column in m1]].copy()
+
+
 def prepare_dashboard_data(raw_tables: dict[str, pd.DataFrame]) -> DashboardData:
     """Unifica las lecturas de M1 y conserva únicamente producción desde 2026."""
     sources = [raw_tables.get("table_report_m1", pd.DataFrame()), raw_tables.get("table_report_m1_out", pd.DataFrame())]
@@ -120,7 +138,7 @@ def prepare_dashboard_data(raw_tables: dict[str, pd.DataFrame]) -> DashboardData
     raw_dedupe_columns = [column for column in ["ReportDate", "ReportTime", "RecipeBB1name", "NumberBatchDone1", "OperatorName"] if column in raw_m1]
     if raw_dedupe_columns:
         raw_m1 = raw_m1.drop_duplicates(subset=raw_dedupe_columns, keep="last")
-    m1 = clean_m1(raw_m1, materials=_load_materials(), min_year=get_settings().min_year)
+    m1 = _project(clean_m1(raw_m1, materials=_load_materials(), min_year=get_settings().min_year))
     return DashboardData(table_date=clean_table_date(raw_tables.get("table_date", pd.DataFrame())), m1=m1)
 
 

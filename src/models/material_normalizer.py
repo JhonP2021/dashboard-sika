@@ -160,6 +160,38 @@ def _is_distinct_grade(left: str, right: str) -> bool:
     return len(" ".join(short_tokens)) < _TRUNCATION_MIN
 
 
+def _rescue_truncations(clusters, counts, project):
+    """Reengancha los truncados cuyo corte partió un número.
+
+    El agrupado por firma numérica ocurre antes de cualquier comparación, así
+    que un nombre cortado a 20 caracteres a mitad de cifra cae en otro cubo y no
+    llega a compararse nunca -- justo el caso que la guarda de truncado existía
+    para cubrir ('ARENA #30/10' contra 'ARENA #30/100'). Esta pasada final
+    recorre los grupos de uno lo bastante largos para ser un corte del HMI y los
+    absorbe en el grupo cuyo canónico empieza por ellos.
+    """
+    survivors, absorbed = [], {}
+    candidates = [c for c in clusters if len(c.members) == 1 and len(project(c.canonical)) >= _TRUNCATION_MIN]
+    hosts = sorted((c for c in clusters if c not in candidates), key=lambda c: -c.usage)
+    for candidate in candidates:
+        short = project(candidate.canonical)
+        host = next((h for h in hosts if project(h.canonical).startswith(short)
+                     and project(h.canonical) != short), None)
+        if host is not None:
+            absorbed.setdefault(id(host), []).append(candidate)
+    for cluster in clusters:
+        if cluster in candidates and any(cluster in group for group in absorbed.values()):
+            continue
+        extra = absorbed.get(id(cluster), [])
+        if not extra:
+            survivors.append(cluster)
+            continue
+        members = tuple(cluster.members) + tuple(m for c in extra for m in c.members)
+        survivors.append(VariantCluster(canonical=cluster.canonical, members=members,
+                                        usage=sum(counts[m] for m in members), needs_review=True))
+    return survivors
+
+
 @dataclass(frozen=True)
 class VariantCluster:
     canonical: str
@@ -226,6 +258,7 @@ def cluster_variants(
                     needs_review=len(members) > 1,
                 )
             )
+    clusters = _rescue_truncations(clusters, counts, project)
     return sorted(clusters, key=lambda c: -c.usage)
 
 

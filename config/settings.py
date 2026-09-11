@@ -50,7 +50,14 @@ def _min_year() -> int | None:
     (23.671 de 388.803) sin que se pudiera cambiar sin tocar código.
     """
     raw = os.getenv("DASHBOARD_MIN_YEAR", "").strip()
-    return int(raw) if raw else None
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        # Un valor mal escrito no debe tumbar el arranque: se cae al
+        # comportamiento documentado, que es cargar todo el histórico.
+        return None
 
 
 @lru_cache(maxsize=1)

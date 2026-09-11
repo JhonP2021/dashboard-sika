@@ -46,16 +46,14 @@ def _source_fingerprint(settings) -> tuple:
 DETAIL_ROWS = 1000
 
 
-def _detail_table(df: pd.DataFrame, tolerance: float, materials: list[str] | None = None) -> pd.io.formats.style.Styler:
-    # Lo más reciente primero: el batch que acaba de salir mal es el que se mira.
-    recent = df.sort_values("report_datetime", ascending=False, kind="stable").head(DETAIL_ROWS)
+def _detail_values(recent: pd.DataFrame, materials: list[str] | None = None) -> pd.DataFrame:
     result = pd.DataFrame()
-    result["Fecha"] = pd.to_datetime(recent.get("report_datetime"), errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
-    result["Operario"] = recent.get("OperatorName", "")
-    result["Producto"] = recent.get("RecipeBB1name", "")
+    result["FECHA"] = pd.to_datetime(recent.get("report_datetime"), errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+    result["OperatorName"] = recent.get("OperatorName", "")
+    result["RecipeBB1name"] = recent.get("RecipeBB1name", "")
     for silo in range(1, 9):
-        values = pd.to_numeric(recent.get(f"Silo {silo}_pct"), errors="coerce")
-        display = values.map(lambda value: "Sin dato" if pd.isna(value) else f"{value:.2f}%")
+        values = pd.to_numeric(recent.get(f"Silo {silo}_pct", pd.Series(index=recent.index, dtype=float)), errors="coerce")
+        display = values.map({value: f"{value:.2f}%" for value in values.dropna().unique()}).fillna("Sin dato")
         material_column = f"Silo {silo}_material"
         if material_column in recent:
             # Un valor anulado por el filtro de material tampoco es un dato perdido.
@@ -64,6 +62,10 @@ def _detail_table(df: pd.DataFrame, tolerance: float, materials: list[str] | Non
                 display.loc[~recent[material_column].isin(selected)] = "Fuera del filtro"
         result[f"s{silo} dif %"] = display
 
+    return result
+
+
+def _detail_table(result: pd.DataFrame, tolerance: float) -> pd.io.formats.style.Styler:
     deviation_columns = [f"s{silo} dif %" for silo in range(1, 9)]
     def highlight(value):
         if value == "Sin dato":
@@ -130,12 +132,11 @@ def main() -> None:
     # lecturas agregadas, emparejadas por la pregunta que responden. Dentro de
     # cada banda las columnas son iguales para que los dos gráficos compartan
     # geometría y no se vean corridos.
-    shown = min(len(filtered), DETAIL_ROWS)
-    subtitle = (f"{shown:,} más recientes de {len(filtered):,}" if len(filtered) > DETAIL_ROWS
-                else f"{len(filtered):,} filas")
-    with card("Detalle de batches", f"{subtitle} · alertas de pesaje"):
+    with card("Detalle de batches", f"{len(filtered):,} registros · hasta {DETAIL_ROWS:,} más recientes"):
+        recent = filtered.sort_values("report_datetime", ascending=False, kind="stable").head(DETAIL_ROWS)
+        detail = _detail_values(recent, filters.materials)
         st.caption(f"Ámbar: más de ±{tolerance:g}% · Rojo: más de ±{2*tolerance:g}% · Gris: fuera del filtro. Se conservan los ceros reportados de silos sin uso.")
-        st.dataframe(_detail_table(filtered, tolerance, filters.materials), use_container_width=True, hide_index=True, height=430)
+        st.dataframe(_detail_table(detail, tolerance), use_container_width=True, hide_index=True, height=430)
 
     st.caption("Gráficos de silos: hasta 500 bloques cronológicos; punto = promedio, barra = mínimo–máximo. Incluyen todo el filtro activo.")
     kg_column, pct_column = st.columns(2, gap="medium")

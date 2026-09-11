@@ -4,6 +4,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from src.models.silo_metrics import valid_weighings
+
 
 SILO_COLORS = ["#38bdf8", "#818cf8", "#34d399", "#fbbf24", "#fb7185", "#c084fc", "#ef4444", "#2dd4bf"]
 
@@ -45,7 +47,14 @@ def plot_silo_differences(df: pd.DataFrame, *, percentage: bool = False) -> go.F
     if df.empty or "report_datetime" not in df or not columns:
         return _empty_figure("No hay datos para los filtros seleccionados.")
 
-    data = df[["report_datetime", *columns]].dropna(subset=["report_datetime"])
+    # Los batches en los que un silo no dosificó reportan 0% y arrastran su
+    # promedio hacia cero: el Silo 1 sólo pesa en el 9,5% de los batches, así que
+    # sin enmascarar su marcador se pega al eje pase lo que pase.
+    masked = df[["report_datetime", *columns]].copy()
+    for column in columns:
+        silo = int(column.split()[1].split("_")[0])
+        masked.loc[~valid_weighings(df, silo), column] = float("nan")
+    data = masked.dropna(subset=["report_datetime"])
     data = data.sort_values("report_datetime", kind="stable").reset_index(drop=True)
     if data.empty:
         return _empty_figure("No hay datos para los filtros seleccionados.")

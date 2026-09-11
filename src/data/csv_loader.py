@@ -19,10 +19,20 @@ except Exception:  # pragma: no cover
         return decorator
 
 
-@cache_data(show_spinner=False)
+# Sin @cache_data a propósito: `load_dashboard_data` ya cachea el resultado ya
+# limpio y proyectado durante 3 h, así que cachear además el crudo sólo retenía
+# una copia de 826 MB del CSV grande que nadie vuelve a leer. Un fallo de la
+# caché externa cuesta releer el fichero; tenerlo cacheado costaba la memoria
+# todo el tiempo.
 def _cached_read_csv(file_path: str, file_mtime: float) -> pd.DataFrame:
     with open(file_path, encoding="utf-8-sig", newline="") as source:
-        delimiter = csv.Sniffer().sniff(source.read(65536), delimiters=",;\t|").delimiter
+        sample = source.read(65536)
+    try:
+        # El prefijo puede cortar a mitad de registro y dejar al sniffer sin
+        # criterio; la coma es el separador de todos los volcados actuales.
+        delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
+    except csv.Error:
+        delimiter = ","
     return pd.read_csv(file_path, encoding="utf-8-sig", sep=delimiter, low_memory=False)
 
 

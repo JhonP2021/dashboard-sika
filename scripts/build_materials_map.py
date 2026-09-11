@@ -49,6 +49,28 @@ def load_slot_usage() -> pd.DataFrame:
     return stacked[stacked["norm"] != ""]
 
 
+def _reclaim_orphans(distinct: pd.DataFrame) -> pd.DataFrame:
+    """Devuelve a su familia las variantes que perdieron la palabra que la nombra.
+
+    El clustering corre dentro de cada familia, así que una descripción a la que
+    el operario no le escribió el nombre del polvo ('30/100' a secas) cae en
+    OTROS y ya no puede alcanzar a 'ARENA 30/100'. Se reasigna sólo con
+    coincidencia exacta contra un spec ya existente -- nada difuso -- para no
+    inventar parentescos.
+    """
+    result = distinct.copy()
+    real = result[result["family"] != "OTROS"]
+    owner = {}
+    for spec, group in real.groupby("spec"):
+        families = set(group["family"])
+        if spec and len(families) == 1:  # un spec ambiguo entre familias no se toca
+            owner[spec] = families.pop()
+    orphans = result["family"].eq("OTROS") & result["norm"].isin(owner)
+    result.loc[orphans, "spec"] = result.loc[orphans, "norm"]
+    result.loc[orphans, "family"] = result.loc[orphans, "norm"].map(owner)
+    return result
+
+
 def build_map(usage: pd.DataFrame) -> pd.DataFrame:
     if usage.empty:
         return pd.DataFrame(columns=COLUMNS)
@@ -57,8 +79,9 @@ def build_map(usage: pd.DataFrame) -> pd.DataFrame:
     resolved = distinct["norm"].map(family_and_spec)
     distinct["family"] = [family for family, _ in resolved]
     distinct["spec"] = [spec for _, spec in resolved]
-    usage = usage.merge(distinct, on="norm", how="left")
+    usage = usage.merge(_reclaim_orphans(distinct), on="norm", how="left")
 
+    distinct = _reclaim_orphans(distinct)
     spec_of = dict(zip(distinct["norm"], distinct["spec"]))
     rows = []
     for family, group in usage.groupby("family"):
