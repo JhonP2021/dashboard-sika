@@ -43,29 +43,40 @@ def _build_access_connection_string(database_path: str | None) -> str | None:
     )
 
 
+def env_number(name: str, default: float, cast=float):
+    """Lee un número de entorno sin tumbar el arranque si está mal escrito.
+
+    Acepta la coma decimal ('2,5') porque es lo que se teclea en un Windows en
+    español; cualquier otra cosa cae al valor por defecto.
+    """
+    raw = os.getenv(name, "").strip().replace(",", ".")
+    if not raw:
+        return default
+    try:
+        return cast(float(raw))
+    except ValueError:
+        return default
+
+
 def _min_year() -> int | None:
     """Año a partir del cual se cargan datos. Vacío = todo el histórico.
 
     El recorte estaba fijo en 2026 y dejaba fuera el 94% de los registros
     (23.671 de 388.803) sin que se pudiera cambiar sin tocar código.
     """
-    raw = os.getenv("DASHBOARD_MIN_YEAR", "").strip()
-    if not raw:
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        # Un valor mal escrito no debe tumbar el arranque: se cae al
-        # comportamiento documentado, que es cargar todo el histórico.
-        return None
+    # Un valor mal escrito no debe tumbar el arranque: se cae al comportamiento
+    # documentado, que es cargar todo el histórico.
+    return env_number("DASHBOARD_MIN_YEAR", None, cast=int)
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
-    mode = os.getenv("DASHBOARD_MODE", "DEV").upper().strip()
+    access_db = os.getenv("ACCESS_DB_PATH", "").strip().strip('"')
+    # Basta con definir ACCESS_DB_PATH para leer de Access; DASHBOARD_MODE sólo
+    # hace falta para forzar un modo concreto.
+    mode = (os.getenv("DASHBOARD_MODE", "").strip() or ("PROD" if access_db else "DEV")).upper()
     csv_paths = {name: DATA_DIR / filename for name, filename in TABLE_FILES.items()}
 
-    access_db = os.getenv("ACCESS_DB_PATH")
     access_path = Path(access_db).expanduser().resolve() if access_db else None
     access_tables = {
         "table_date": os.getenv("ACCESS_TABLE_DATE", "TableDate"),

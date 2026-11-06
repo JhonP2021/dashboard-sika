@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 import pandas as pd
 
@@ -19,7 +20,14 @@ class DashboardData:
 def status_canonicals() -> set[str]:
     """Nombres que marcan silo sin material, para excluirlos de los gráficos."""
     path = get_settings().materials_map_path
-    return load_status_canonicals(path) if path.exists() else set()
+    return set(_status_canonicals(str(path), path.stat().st_mtime)) if path.exists() else set()
+
+
+@lru_cache(maxsize=1)
+def _status_canonicals(path: str, mtime: float) -> frozenset[str]:
+    # Se llama en cada rerun de Streamlit: releer y parsear el CSV en cada clic
+    # sobra mientras el fichero no cambie.
+    return frozenset(load_status_canonicals(path))
 
 
 def _load_materials() -> dict[str, str] | None:
@@ -27,17 +35,6 @@ def _load_materials() -> dict[str, str] | None:
     pierde el desglose por material."""
     path = get_settings().materials_map_path
     return load_canonical_map(path) if path.exists() else None
-
-
-def _used_silo(df: pd.DataFrame, silo: int) -> pd.Series:
-    """Excluir no-pesajes sólo de las muestras, sin alterar valores reportados.
-
-    Delega en el criterio único de `silo_metrics`: antes descartaba el caso
-    "objetivo 0 y real 0" pero conservaba "objetivo 0 con real distinto de 0",
-    que es justo el que las tarjetas excluyen. Con dos poblaciones distintas,
-    la sigma de las tarjetas y la de estos gráficos no podían coincidir.
-    """
-    return valid_weighings(df, silo)
 
 
 def material_long(df: pd.DataFrame, *, exclude: set[str] | None = None) -> pd.DataFrame:
@@ -57,7 +54,8 @@ def material_long(df: pd.DataFrame, *, exclude: set[str] | None = None) -> pd.Da
             "kg": pd.to_numeric(df.get(kg), errors="coerce"),
             "pct": pd.to_numeric(df.get(pct), errors="coerce"),
         })
-        frames.append(piece.loc[_used_silo(df, silo)])
+        # Mismo criterio que las tarjetas, para que las dos σ coincidan.
+        frames.append(piece.loc[valid_weighings(df, silo)])
     if not frames:
         return pd.DataFrame(columns=["material", "silo", "kg", "pct"])
     long = pd.concat(frames, ignore_index=True)
@@ -108,7 +106,7 @@ def operator_long(df: pd.DataFrame) -> pd.DataFrame:
             "silo": f"Silo {silo}",
             "kg": pd.to_numeric(df.get(f"Silo {silo}_kg"), errors="coerce"),
             "pct": pd.to_numeric(df[pct], errors="coerce"),
-        }).loc[_used_silo(df, silo)])
+        }).loc[valid_weighings(df, silo)])
     if not frames:
         return pd.DataFrame(columns=["operario", "silo", "kg", "pct"])
     long = pd.concat(frames, ignore_index=True)

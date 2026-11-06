@@ -20,8 +20,8 @@ def valid_weighings(df: pd.DataFrame, silo: int) -> pd.Series:
 
     target, actual, pct = numeric(f"Silo{silo}Target"), numeric(f"Silo{silo}Real"), numeric(f"Silo {silo}_pct")
     if f"Silo{silo}Target" not in df or f"Silo{silo}Real" not in df:
-        return pct.notna()
-    return target.gt(0) & actual.ge(0) & np.isfinite(target) & np.isfinite(actual) & pct.notna()
+        return pd.Series(np.isfinite(pct), index=df.index)
+    return target.gt(0) & actual.ge(0) & np.isfinite(target) & np.isfinite(actual) & np.isfinite(pct)
 
 
 def silo_incidents(df: pd.DataFrame, silo: int, tolerance: float = 5.0,
@@ -37,7 +37,7 @@ def silo_incidents(df: pd.DataFrame, silo: int, tolerance: float = 5.0,
     finite_weights = np.isfinite(target) & np.isfinite(actual)
     unused = target.eq(0) & actual.eq(0)
     no_target = scope & finite_weights & target.eq(0) & actual.gt(0)
-    valid = scope & finite_weights & target.gt(0) & actual.ge(0) & np.isfinite(pct)
+    valid = scope & valid_weighings(df, silo)
     outside = valid & pct.abs().gt(tolerance)
     extreme = valid & pct.abs().gt(2 * tolerance)
     zero_real = scope & finite_weights & target.gt(0) & actual.eq(0)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from datetime import datetime
 from typing import Iterable
 
 import pandas as pd
@@ -27,7 +28,15 @@ def _parse_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
         if lower in {"reportdate", "fecha", "startdate_m1", "enddate_m1"}:
             result[column] = pd.to_datetime(result[column], errors="coerce", dayfirst=False)
         elif lower in {"reporttime", "hora", "starttime_m1"}:
-            result[column] = pd.to_timedelta(result[column].astype(str), errors="coerce")
+            if result[column].dtype == "object" and result[column].map(lambda v: isinstance(v, datetime)).any():
+                result[column] = pd.to_datetime(result[column], errors="coerce")
+            if pd.api.types.is_datetime64_any_dtype(result[column]):
+                # Access guarda la hora como fecha 1899-12-30 + hora; pyodbc la
+                # entrega como datetime y su texto no es un timedelta válido, así
+                # que sin esto todas las filas quedaban sin fecha y se descartaban.
+                result[column] = result[column] - result[column].dt.normalize()
+            else:
+                result[column] = pd.to_timedelta(result[column].astype(str), errors="coerce")
     return result
 
 

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import os
-import traceback
-
 import pandas as pd
 import streamlit as st
 
-from config.settings import get_settings
+from config.settings import env_number, get_settings
 from src.components.charts import (
     plot_material_deviation, plot_operator_deviation, plot_silo_differences,
 )
@@ -25,7 +22,9 @@ st.set_page_config(page_title="Control de Pesajes · Sika", layout="wide")
 st.markdown(CARD_CSS, unsafe_allow_html=True)
 
 
-@st.cache_data(ttl=3 * 60 * 60, show_spinner="Actualizando datos de producción...")
+# max_entries=1: sólo se conserva la versión vigente. Cada entrada lleva el
+# histórico completo y sin tope se acumulaban copias hasta que vencía el TTL.
+@st.cache_data(ttl=3 * 60 * 60, max_entries=1, show_spinner="Actualizando datos de producción...")
 def load_dashboard_data(mode: str, source_fingerprint: tuple):
     settings = get_settings()
     loader = CSVTableLoader(settings) if mode == "DEV" else AccessTableLoader(settings)
@@ -33,10 +32,14 @@ def load_dashboard_data(mode: str, source_fingerprint: tuple):
 
 
 def _source_fingerprint(settings) -> tuple:
-    paths = settings.csv_paths.values() if settings.mode == "DEV" else [settings.access_db_path]
-    return ("reported-silo-values-v2", settings.min_year,
-            settings.materials_map_path.stat().st_mtime if settings.materials_map_path.exists() else 0,
-            *(path.stat().st_mtime if path and path.exists() else 0.0 for path in paths))
+    map_mtime = settings.materials_map_path.stat().st_mtime if settings.materials_map_path.exists() else 0
+    base = ("reported-silo-values-v2", settings.min_year, map_mtime)
+    if settings.mode != "DEV":
+        # Sin el mtime del .accdb: la línea escribe en él cada pocos minutos y
+        # con el mtime en la clave la caché se rehacía en cada escritura. En
+        # producción el refresco lo marca sólo el TTL de 3 h.
+        return (*base, str(settings.access_db_path))
+    return (*base, *(path.stat().st_mtime if path.exists() else 0.0 for path in settings.csv_paths.values()))
 
 
 # Filas que se pasan al Styler. Colorear celda a celda es caro y pandas corta en
@@ -86,6 +89,11 @@ def main() -> None:
     settings = get_settings()
     st.markdown('<div class="hero"><div><h1>Control de desviaciones de pesaje</h1></div></div>', unsafe_allow_html=True)
 
+    if settings.mode != "DEV" and not (settings.access_db_path and settings.access_db_path.exists()):
+        st.error(f"No se encuentra la base de Access en ACCESS_DB_PATH: {settings.access_db_path or '(vacía)'}. "
+                 "Revisa la ruta en Iniciar_Dashboard.bat.")
+        return
+
     dataset = load_dashboard_data(settings.mode, _source_fingerprint(settings))
     data = dataset.m1
     if data.empty:
@@ -116,7 +124,7 @@ def main() -> None:
         materials=filters.materials,
     ).m1
 
-    tolerance = float(os.getenv("DASHBOARD_TOLERANCE_PCT", "5"))
+    tolerance = env_number("DASHBOARD_TOLERANCE_PCT", 5.0)
     period = (f"{filters.date_range[0]:%d/%m/%Y} — {filters.date_range[1]:%d/%m/%Y}"
               if filters.date_range else "Todo el histórico")
     st.markdown(

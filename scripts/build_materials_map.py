@@ -79,9 +79,8 @@ def build_map(usage: pd.DataFrame) -> pd.DataFrame:
     resolved = distinct["norm"].map(family_and_spec)
     distinct["family"] = [family for family, _ in resolved]
     distinct["spec"] = [spec for _, spec in resolved]
-    usage = usage.merge(_reclaim_orphans(distinct), on="norm", how="left")
-
     distinct = _reclaim_orphans(distinct)
+    usage = usage.merge(distinct, on="norm", how="left")
     spec_of = dict(zip(distinct["norm"], distinct["spec"]))
     rows = []
     for family, group in usage.groupby("family"):

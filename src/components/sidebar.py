@@ -26,17 +26,29 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
     date_range = None
     if min_date is not None and max_date is not None:
         default_start = max(min_date, max_date - timedelta(days=60))
-        applied_key = "dashboard_applied_dates"
+        applied_key, mode_key, anchor_key = "dashboard_applied_dates", "dashboard_dates_mode", "dashboard_dates_anchor"
+
+        def apply(start, end, mode):
+            st.session_state[applied_key] = (start, end)
+            st.session_state["dashboard_date_start"] = start
+            st.session_state["dashboard_date_end"] = end
+            st.session_state[mode_key] = mode
+            st.session_state[anchor_key] = max_date
+
         previous = st.session_state.get(applied_key)
-        if previous is None or not (min_date <= previous[0] <= previous[1] <= max_date):
-            st.session_state[applied_key] = (default_start, max_date)
-            st.session_state["dashboard_date_start"] = default_start
-            st.session_state["dashboard_date_end"] = max_date
+        mode = st.session_state.get(mode_key, "default")
+        # Una pantalla que se queda abierta en planta debe seguir al último día:
+        # cuando la recarga de 3 h trae un max_date nuevo, el rango por defecto
+        # y el histórico completo se re-anclan. Un rango elegido a mano se respeta.
+        moved = mode != "custom" and st.session_state.get(anchor_key) != max_date
+        if previous is None or moved or not (min_date <= previous[0] <= previous[1] <= max_date):
+            if mode == "full":
+                apply(min_date, max_date, "full")
+            else:
+                apply(default_start, max_date, "default")
 
         if st.sidebar.button("Todo el histórico"):
-            st.session_state[applied_key] = (min_date, max_date)
-            st.session_state["dashboard_date_start"] = min_date
-            st.session_state["dashboard_date_end"] = max_date
+            apply(min_date, max_date, "full")
 
         with st.sidebar.form("dashboard_dates"):
             start = st.date_input(
@@ -57,6 +69,7 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
                 st.sidebar.error("El rango debe estar dentro de las fechas disponibles.")
             else:
                 st.session_state[applied_key] = (start, end)
+                st.session_state[mode_key] = "custom"
         date_range = st.session_state[applied_key]
         st.sidebar.caption(
             f"Rango aplicado: {date_range[0]:%d/%m/%Y} – {date_range[1]:%d/%m/%Y} (ambos días incluidos)."

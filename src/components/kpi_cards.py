@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import html
-import os
 
 import pandas as pd
 import streamlit as st
 
+from config.settings import env_number
 from src.components.charts import SILO_COLORS
 from src.models.silo_metrics import silo_incidents, valid_weighings
 
@@ -15,12 +15,12 @@ from src.models.silo_metrics import silo_incidents, valid_weighings
 # ajustarlos sin tocar código. Deliberadamente no reutilizan el ±5% de
 # tolerancia de peso, que mide otra cosa (cuánto se desvía un pesaje, no cuántos
 # pesajes pueden desviarse).
-ALERT_RATE_AMBER = float(os.getenv("DASHBOARD_ALERT_RATE_AMBER", "2"))
-ALERT_RATE_RED = float(os.getenv("DASHBOARD_ALERT_RATE_RED", "5"))
+ALERT_RATE_AMBER = env_number("DASHBOARD_ALERT_RATE_AMBER", 2.0)
+ALERT_RATE_RED = env_number("DASHBOARD_ALERT_RATE_RED", 5.0)
 # Por debajo de esta muestra la tasa no significa nada: el Silo 5 tenía 110
 # pesajes evaluables en el rango inicial, donde un solo evento mueve la tasa un
 # punto entero.
-ALERT_MIN_SAMPLES = int(os.getenv("DASHBOARD_ALERT_MIN_SAMPLES", "30"))
+ALERT_MIN_SAMPLES = env_number("DASHBOARD_ALERT_MIN_SAMPLES", 30, cast=int)
 
 STATE_COLORS = {"green": "#34d399", "amber": "#fbbf24", "red": "#ef4444", "gray": "rgba(255,255,255,.15)"}
 
@@ -123,6 +123,6 @@ def render_silo_kpis(df: pd.DataFrame, tolerance: float = 5.0, materials: list[s
     if zero_real_total:
         st.warning(f"{zero_real_total:,} registros de silo tienen objetivo positivo y peso real cero. Revisa si corresponden a falta de dosificación, arranque o captura parcial; no se han descartado.")
     if no_target_total:
-        st.warning(f"{no_target_total:,} registros de silo tienen peso real positivo sin objetivo. No se incluyen en el porcentaje de cumplimiento; se conservan los valores originales para σ.")
+        st.warning(f"{no_target_total:,} registros de silo tienen peso real positivo sin objetivo. No se incluyen ni en el porcentaje de cumplimiento ni en σ.")
     if invalid_total:
         st.warning(f"{invalid_total:,} registros de silo no tienen porcentaje o pesos válidos dentro del filtro activo.")

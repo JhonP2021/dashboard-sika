@@ -1,1 +1,4 @@
 *.csv filter=lfs diff=lfs merge=lfs -text
+# El mapa de materiales es configuración que la app lee al arrancar: fuera de
+# LFS para que un clon sin `git lfs pull` lo traiga completo.
+config/materials_map.csv !filter !diff !merge text

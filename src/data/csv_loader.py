@@ -8,23 +8,13 @@ import pandas as pd
 from config.settings import AppSettings
 from src.data.base_loader import BaseLoader
 
-try:  # pragma: no cover - optional dependency
-    import streamlit as st
-    cache_data = st.cache_data
-except Exception:  # pragma: no cover
-    def cache_data(*args, **kwargs):
-        def decorator(func):
-            return func
-
-        return decorator
-
 
 # Sin @cache_data a propósito: `load_dashboard_data` ya cachea el resultado ya
 # limpio y proyectado durante 3 h, así que cachear además el crudo sólo retenía
 # una copia de 826 MB del CSV grande que nadie vuelve a leer. Un fallo de la
 # caché externa cuesta releer el fichero; tenerlo cacheado costaba la memoria
 # todo el tiempo.
-def _cached_read_csv(file_path: str, file_mtime: float) -> pd.DataFrame:
+def _read_csv(file_path: str) -> pd.DataFrame:
     with open(file_path, encoding="utf-8-sig", newline="") as source:
         sample = source.read(65536)
     try:
@@ -43,7 +33,7 @@ class CSVTableLoader(BaseLoader):
     def load_table(self, table_name: str) -> pd.DataFrame:
         path = self.settings.csv_paths[table_name]
         resolved = self._ensure_path(path)
-        return _cached_read_csv(str(resolved), resolved.stat().st_mtime)
+        return _read_csv(str(resolved))
 
     def load_all(self) -> dict[str, pd.DataFrame]:
         return {name: self.load_table(name) for name in self.settings.csv_paths}

@@ -270,9 +270,9 @@ def load_canonical_map(path) -> dict[str, str]:
     corrompe. El CSV es editable a mano, así que la columna `canonico` manda
     sobre lo que decidió el clustering.
     """
-    import pandas as pd
-
-    frame = pd.read_csv(path, keep_default_na=False, dtype=str)
+    frame = _read_map(path)
+    if frame is None:
+        return {}
     return dict(zip(frame["variante"], frame["canonico"]))
 
 
@@ -294,7 +294,54 @@ def load_status_canonicals(path) -> set[str]:
     No son polvos, así que su desviación no significa nada y hay que sacarlos
     del análisis por material.
     """
+    frame = _read_map(path)
+    if frame is None:
+        return set()
+    return set(frame.loc[frame["familia"] == "ESTADO", "canonico"])
+
+
+_MAP_COLUMNS = {"familia", "variante", "canonico"}
+
+
+def _read_map(path):
+    """Lee el mapa tolerando lo que deja Excel y lo que deja un clon sin LFS.
+
+    Excel en español guarda el CSV con ';' y en cp1252; un clon sin `git lfs
+    pull` deja sólo el puntero de texto. En cualquiera de esos casos el mapa es
+    opcional: mejor perder el desglose por material que tumbar el dashboard.
+    """
+    import csv
+    import logging
+
     import pandas as pd
 
-    frame = pd.read_csv(path, keep_default_na=False, dtype=str)
-    return set(frame.loc[frame["familia"] == "ESTADO", "canonico"])
+    log = logging.getLogger(__name__)
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            with open(path, encoding=encoding, newline="") as source:
+                sample = source.read(65536)
+            try:
+                delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t").delimiter
+            except csv.Error:
+                delimiter = ","
+            frame = pd.read_csv(path, sep=delimiter, encoding=encoding, keep_default_na=False, dtype=str)
+            break
+        except UnicodeDecodeError:
+            continue
+        except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
+            # Un guardado fallido deja el fichero vacío o a medias.
+            log.warning("No se pudo leer %s (%s); se ignora.", path, error)
+            return None
+    else:
+        log.warning("No se pudo leer %s: codificación desconocida.", path)
+        return None
+    frame.columns = [str(column).strip().lower() for column in frame.columns]
+    if not _MAP_COLUMNS.issubset(frame.columns):
+        log.warning("%s no tiene las columnas %s (¿puntero LFS sin descargar?); se ignora.", path, sorted(_MAP_COLUMNS))
+        return None
+    # `canonical_material` busca por la forma normalizada: una fila tecleada a
+    # mano como 'VACÍO' no coincidiría nunca con la 'VACIO' que se consulta.
+    for column in ("variante", "canonico"):
+        frame[column] = frame[column].map(normalize_description)
+    frame["familia"] = frame["familia"].str.strip().str.upper()
+    return frame
