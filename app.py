@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import pandas as pd
 import streamlit as st
 
@@ -28,12 +30,12 @@ st.markdown(CARD_CSS, unsafe_allow_html=True)
 def load_dashboard_data(mode: str, source_fingerprint: tuple):
     settings = get_settings()
     loader = CSVTableLoader(settings) if mode == "DEV" else AccessTableLoader(settings)
-    return prepare_dashboard_data(loader.load_all())
+    return prepare_dashboard_data(loader.load_all()), datetime.now().astimezone()
 
 
 def _source_fingerprint(settings) -> tuple:
     map_mtime = settings.materials_map_path.stat().st_mtime if settings.materials_map_path.exists() else 0
-    base = ("reported-silo-values-v2", settings.min_year, map_mtime)
+    base = ("reported-silo-values-v3", settings.min_date, map_mtime)
     if settings.mode != "DEV":
         # Sin el mtime del .accdb: la línea escribe en él cada pocos minutos y
         # con el mtime en la clave la caché se rehacía en cada escritura. En
@@ -94,7 +96,28 @@ def main() -> None:
                  "Revisa la ruta en Iniciar_Dashboard.bat.")
         return
 
-    dataset = load_dashboard_data(settings.mode, _source_fingerprint(settings))
+    try:
+        dataset, loaded_at = load_dashboard_data(settings.mode, _source_fingerprint(settings))
+        st.session_state["last_dashboard_dataset"] = dataset
+        st.session_state["last_dashboard_loaded_at"] = loaded_at
+        using_fallback = False
+    except Exception:
+        dataset = st.session_state.get("last_dashboard_dataset")
+        loaded_at = st.session_state.get("last_dashboard_loaded_at")
+        if dataset is None or loaded_at is None:
+            raise
+        using_fallback = True
+
+    age_hours = (datetime.now().astimezone() - loaded_at).total_seconds() / 3600
+    if using_fallback:
+        st.warning(
+            "No fue posible actualizar la base de Access. "
+            "Se muestran los últimos datos cargados correctamente."
+        )
+    st.caption(
+        f"Última carga: {loaded_at:%d/%m/%Y %H:%M:%S} · "
+        f"caché de 3 horas · antigüedad: {age_hours:.1f} h"
+    )
     data = dataset.m1
     if data.empty:
         st.warning("La fuente actual no tiene registros de producción.")
@@ -118,6 +141,9 @@ def main() -> None:
         min_date=data["report_day"].min(), max_date=data["report_day"].max(), batch_bounds=batch_bounds,
         available_materials=available_materials,
     )
+    if filters.refresh_requested:
+        load_dashboard_data.clear()
+        st.rerun()
     filtered = apply_dashboard_filters(
         dataset, date_range=filters.date_range, formula_keys=filters.formula_keys,
         operators=filters.operators, lots=filters.lots, batch_range=filters.batch_range,
@@ -165,4 +191,4 @@ if __name__ == "__main__":
         main()
     except Exception as error:
         st.error("No fue posible cargar el dashboard.")
-        st.exception(error)
+        st.info("Revisa la ruta de Access, que la base no esté bloqueada y que el controlador ODBC esté instalado.")

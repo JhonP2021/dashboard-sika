@@ -8,6 +8,7 @@ import html
 import streamlit as st
 
 LOGO_PATH = Path(__file__).resolve().parents[2] / "assets" / "sika-logo.png"
+PARTNER_LOGO_PATH = Path(__file__).resolve().parents[2] / "assets" / "ix-automation.png"
 
 
 @lru_cache(maxsize=1)
@@ -22,6 +23,13 @@ def logo_data_uri() -> str:
     return "data:image/png;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode()
 
 
+@lru_cache(maxsize=1)
+def partner_logo_data_uri() -> str:
+    if not PARTNER_LOGO_PATH.exists():
+        return ""
+    return "data:image/png;base64," + base64.b64encode(PARTNER_LOGO_PATH.read_bytes()).decode()
+
+
 def brand_markup() -> str:
     logo = logo_data_uri()
     mark = (f'<img class="brand-logo" src="{logo}" alt="Sika">' if logo
@@ -33,7 +41,8 @@ CARD_CSS = """
 <style>
 .stApp { background: #0b0e14; color: #f0f2f5; }
 [data-testid="stHeader"] { background: #0b0e14; }
-[data-testid="stSidebar"] { background: #111620; border-right: 1px solid rgba(255,255,255,.07); }
+[data-testid="stSidebar"] { background: #0b0e14; border-right:0; height:auto !important; max-height:100vh; align-self:flex-start; }
+[data-testid="stSidebar"] > div:first-child { background:#111620; border:1px solid rgba(255,255,255,.18); border-radius:0 0 14px 14px; height:auto !important; max-height:100vh; overflow-y:auto; }
 /* La barra lateral queda siempre desplegada: se oculta el botón de plegado y
    se colapsa la franja que Streamlit le reservaba encima del contenido, para
    que el logo arranque pegado al borde superior. */
@@ -45,6 +54,9 @@ CARD_CSS = """
 .brand-logo { width:46px; height:46px; object-fit:contain; display:block; }
 .brand-mark { background:#ffcc00; color:#20262e; font-weight:900; font-size:22px; padding:8px 12px; border-radius:6px; letter-spacing:-1px; }
 .brand-label { font-size:11px; color:#8f9bab; letter-spacing:1.5px; font-weight:700; }
+.partner-footer { display:flex; align-items:center; gap:10px; margin-top:28px; padding-top:18px; border-top:1px solid rgba(255,255,255,.07); }
+.partner-logo { width:70px; height:70px; object-fit:contain; flex:0 0 auto; }
+.partner-credit { color:#8f9bab; font-size:9px; line-height:1.5; text-align:left; }
 .hero { margin-bottom:20px; overflow:visible; }
 /* line-height explícito con holgura: con padding 0 y el line-height ajustado
    de Streamlit, la caja de línea queda más corta que el ascendente de la

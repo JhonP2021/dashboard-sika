@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from datetime import datetime
+from datetime import date, datetime
 from typing import Iterable
 
 import pandas as pd
@@ -89,7 +89,7 @@ def _canonical_formula_label(result: pd.DataFrame) -> pd.DataFrame:
 
 
 def clean_m1(df: pd.DataFrame, materials: dict[str, str] | None = None,
-              min_year: int | None = None) -> pd.DataFrame:
+              min_year: int | None = None, min_date: date | None = None) -> pd.DataFrame:
     result = _coerce_numeric_columns(_parse_datetime_columns(df), exclude={"oiltarget"})
     # Recipe1Name es el nombre del producto; RecipeBB1name es el del big-bag 1 y
     # en el 88% de los batches dice "No BB1 in Formula". Preferir el segundo
@@ -112,7 +112,9 @@ def clean_m1(df: pd.DataFrame, materials: dict[str, str] | None = None,
         result["report_datetime"] = pd.NaT
     result["report_day"] = pd.to_datetime(result["report_datetime"], errors="coerce").dt.date
     result = result[result["report_datetime"].notna()].copy()
-    if min_year is not None:
+    if min_date is not None:
+        result = result[pd.to_datetime(result["report_datetime"], errors="coerce").dt.date >= min_date]
+    elif min_year is not None:
         years = pd.to_datetime(result["report_datetime"], errors="coerce").dt.year
         result = result[years >= min_year]
     result = result.copy()

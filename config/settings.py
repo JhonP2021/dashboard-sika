@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from datetime import date
+import calendar
 import os
 
 
@@ -23,7 +25,7 @@ class AppSettings:
     data_dir: Path
     csv_paths: dict[str, Path]
     materials_map_path: Path
-    min_year: int | None
+    min_date: date | None
     access_db_path: Path | None
     access_connection_string: str | None
     access_tables: dict[str, str]
@@ -58,15 +60,22 @@ def env_number(name: str, default: float, cast=float):
         return default
 
 
-def _min_year() -> int | None:
-    """Año a partir del cual se cargan datos. Vacío = todo el histórico.
+def _min_date() -> date:
+    """Inicio del histórico: ventana móvil de 18 meses.
 
-    El recorte estaba fijo en 2026 y dejaba fuera el 94% de los registros
-    (23.671 de 388.803) sin que se pudiera cambiar sin tocar código.
+    DASHBOARD_MIN_YEAR se conserva como compatibilidad para forzar un corte
+    anual concreto si la planta lo necesita.
     """
-    # Un valor mal escrito no debe tumbar el arranque: se cae al comportamiento
-    # documentado, que es cargar todo el histórico.
-    return env_number("DASHBOARD_MIN_YEAR", None, cast=int)
+    forced_year = env_number("DASHBOARD_MIN_YEAR", None, cast=int)
+    if forced_year is not None:
+        return date(forced_year, 1, 1)
+    today = date.today()
+    month = today.month - 18
+    year = today.year
+    while month <= 0:
+        month += 12
+        year -= 1
+    return date(year, month, min(today.day, calendar.monthrange(year, month)[1]))
 
 
 @lru_cache(maxsize=1)
@@ -90,7 +99,7 @@ def get_settings() -> AppSettings:
         data_dir=DATA_DIR,
         csv_paths=csv_paths,
         materials_map_path=BASE_DIR / "config" / "materials_map.csv",
-        min_year=_min_year(),
+        min_date=_min_date(),
         access_db_path=access_path,
         access_connection_string=_build_access_connection_string(str(access_path) if access_path else None),
         access_tables=access_tables,

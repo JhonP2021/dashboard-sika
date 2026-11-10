@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
 
-from src.components.layout import brand_markup
+from src.components.layout import brand_markup, partner_logo_data_uri
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,7 @@ class SidebarFilters:
     lots: list[str]
     materials: list[str]
     batch_range: tuple[int, int] | None
+    refresh_requested: bool
 
 
 def render_sidebar(*, formula_options: dict[str, str], available_operators: list[str], available_lots: list[str], min_date, max_date, batch_bounds: tuple[int, int] | None, available_materials: list[str] | None = None) -> SidebarFilters:
@@ -24,6 +25,7 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
     st.sidebar.header("Filtros de producción")
 
     date_range = None
+    refresh_requested = False
     if min_date is not None and max_date is not None:
         default_start = max(min_date, max_date - timedelta(days=60))
         applied_key, mode_key, anchor_key = "dashboard_applied_dates", "dashboard_dates_mode", "dashboard_dates_anchor"
@@ -47,8 +49,11 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
             else:
                 apply(default_start, max_date, "default")
 
-        if st.sidebar.button("Todo el histórico"):
+        with st.sidebar.container():
+            full_history, refresh = st.sidebar.columns(2)
+        if full_history.button("Todo el histórico", use_container_width=True):
             apply(min_date, max_date, "full")
+        refresh_requested = refresh.button("Actualizar datos", use_container_width=True)
 
         with st.sidebar.form("dashboard_dates"):
             start = st.date_input(
@@ -111,5 +116,14 @@ def render_sidebar(*, formula_options: dict[str, str], available_operators: list
         )
 
     st.sidebar.caption("Selecciona productos o materiales para acotar el análisis.")
+    partner_logo = partner_logo_data_uri()
+    if partner_logo:
+        st.sidebar.markdown(
+            '<div class="partner-footer">'
+            f'<img class="partner-logo" src="{partner_logo}" alt="IX Automation">'
+            '<div class="partner-credit">Desarrollado por Jhon Patiño<br>'
+            'Co-authored: Javier Ortiz</div></div>',
+            unsafe_allow_html=True,
+        )
 
-    return SidebarFilters(date_range, formula_keys, operators, lots, materials, batch_range)
+    return SidebarFilters(date_range, formula_keys, operators, lots, materials, batch_range, refresh_requested)
